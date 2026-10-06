@@ -1,6 +1,8 @@
 "use client";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { ContactShadows, Environment, Lightformer } from "@react-three/drei";
+import { Suspense } from "react";
 import { EffectComposer, Bloom, SMAA } from "@react-three/postprocessing";
 import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Runner from "./Runner";
@@ -11,27 +13,34 @@ import { story, storyState, srange } from "@/lib/story";
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 const KEY = {
   hero: { pos: V(1.9, 1.3, 4.3), tgt: V(-0.5, 0.95, 0) },
-  xray: { pos: V(1.45, 1.15, 2.7), tgt: V(0, 1.0, 0) },
-  dive: { pos: V(0.42, 1.02, 0.5), tgt: V(0.07, 0.97, 0) },
-  finishA: { pos: V(3.6, 0.85, 2.6), tgt: V(0, 0.95, -0.6) },
-  finishB: { pos: V(3.3, 1.05, 3.1), tgt: V(-0.2, 0.9, -0.1) },
+  xray: { pos: V(1.4, 1.1, 2.6), tgt: V(0, 0.92, 0) },
+  dive: { pos: V(0.32, 0.98, 0.5), tgt: V(-0.07, 0.92, 0) },
+  // finish: over her shoulder, the line comes towards her
+  finishA: { pos: V(-3.0, 2.1, -5.0), tgt: V(0.3, 0.9, 2.2) },
+  finishB: { pos: V(-2.4, 1.7, -4.0), tgt: V(0.2, 0.9, 1.8) },
 };
 
 function CameraRig() {
-  const { camera } = useThree();
+  const { camera, scene } = useThree();
   const desired = useMemo(() => ({ pos: KEY.hero.pos.clone(), tgt: KEY.hero.tgt.clone() }), []);
   const lookAt = useRef(KEY.hero.tgt.clone());
   const wasMicro = useRef(false);
   const tmp = useMemo(() => new THREE.Vector3(), []);
 
   useFrame((_, dt) => {
+    camera.layers.enable(1);
     const p = story.get();
     const s = storyState(p);
     let snap = false;
+    const fog = scene.fog as THREE.Fog | null;
+    if (fog) {
+      fog.near = s.micro ? 3.0 : 9;
+      fog.far = s.micro ? 10.5 : 34;
+    }
     if (s.micro) {
       const a = 0.6 + p * 2.4;
-      const R = 4.6 - 0.9 * s.porosity;
-      desired.pos.set(MICRO_ORIGIN.x + Math.cos(a) * R, MICRO_ORIGIN.y + 0.9 + 0.4 * Math.sin(p * 9), MICRO_ORIGIN.z + Math.sin(a) * R);
+      const R = 6.4 - 0.7 * s.porosity;
+      desired.pos.set(MICRO_ORIGIN.x + Math.cos(a) * R, MICRO_ORIGIN.y + 0.7 + 0.5 * Math.sin(p * 9), MICRO_ORIGIN.z + Math.sin(a) * R);
       desired.tgt.copy(MICRO_ORIGIN);
       if (!wasMicro.current) snap = true;
     } else if (s.finish) {
@@ -140,10 +149,19 @@ export default function StoryCanvas({ active }: { active: boolean }) {
           <fog attach="fog" args={["#141416", 9, 34]} />
           <Lights />
           <CameraRig />
-          <Track />
-          <Dust />
-          <Runner />
-          <MicroBone />
+          <Suspense fallback={null}>
+            <Environment resolution={256} frames={1}>
+              <Lightformer intensity={2.2} color="#fff4e4" position={[0, 6, -9]} scale={[12, 10, 1]} />
+              <Lightformer intensity={1.4} color="#c6f432" position={[-6, 2, 1]} rotation-y={Math.PI / 2} scale={[10, 2.5, 1]} />
+              <Lightformer intensity={1.1} color="#a8d4ff" position={[7, 3, 2]} rotation-y={-Math.PI / 2} scale={[8, 2.5, 1]} />
+              <Lightformer intensity={0.5} color="#ffffff" position={[0, -2, 0]} rotation-x={Math.PI / 2} scale={[12, 12, 1]} />
+            </Environment>
+            <Track />
+            <Dust />
+            <Runner />
+            <ContactShadows position={[0, 0.004, 0]} opacity={0.6} scale={5} blur={2.4} far={1.8} resolution={256} color="#2a0d08" />
+            <MicroBone />
+          </Suspense>
           <EffectComposer multisampling={0}>
             <SMAA />
             <Bloom intensity={0.75} luminanceThreshold={0.62} luminanceSmoothing={0.25} mipmapBlur />

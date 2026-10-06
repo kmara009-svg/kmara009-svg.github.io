@@ -34,9 +34,16 @@ Pushing to `main` deploys to GitHub Pages through `.github/workflows/deploy.yml`
 | `lib/story.ts` | Scroll-story progress store, beats and phase timings |
 | `components/Experience.tsx` | Lenis smooth scroll, stop snapping, keyboard navigation, presentation mode |
 | `components/ScrollStory.tsx` | Pinned hero → X-ray → bone → finish-line story with HTML overlays |
-| `components/three/` | Procedural runner + skeleton, track, dust, trabecular bone lattice, camera rig |
+| `components/three/` | Rigged runner + bone-parented X-ray skeleton, track, dust, marching-cubes trabecular bone, camera rig |
+| `public/models/` | `runner.glb` (Mixamo "Michelle" character, from the three.js examples) and `run.json` (a Mixamo run clip retargeted onto her rig) |
 | `components/sections/` | One component per slide |
 | `components/charts/` | Risk bars, energy-availability zone bar, interval chart |
 | `public/fallback/` | Static frames shown if WebGL is unavailable |
 
 The injury-report slide uses `public/images/injury-report.png`; swap that file to change the form image.
+
+## The 3D story
+
+* **Runner**: a textured, rigged Mixamo character driven by a motion-captured Mixamo run clip. The clip was retargeted onto her skeleton offline (per-bone rest-pose offsets, then `SkeletonUtils.retargetClip`) and stored as `public/models/run.json`. To use a different character, export a Mixamo rig as GLB, retarget the clip onto it the same way and point `components/three/Runner.tsx` at the new files.
+* **X-ray**: her body fades to a translucent glow while capsule bones parented to her real rig bones light up. The pelvis, sacrum, femoral neck, tibia and foot bones use the lime "high-risk" material.
+* **Bone**: trabecular bone is a warped gyroid isosurface polygonised with three's `MarchingCubes`. Scroll progress drives the trabecular thickness and a grain term that perforates the network, so it thins to an osteoporotic lattice and rebuilds again.
