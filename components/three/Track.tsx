@@ -103,13 +103,14 @@ export default function Track() {
     tex.offset.y -= d * speed * 0.14;
     if (finish.current) {
       finish.current.visible = s.finish;
-      finish.current.position.z = -18 + 18.3 * s.finishLine;
+      finish.current.position.z = 17 - 16.4 * s.finishLine;
     }
     if (streaks.current) {
+      streaks.current.layers.set(1);
       const vis = s.micro ? 0 : 0.25 + 0.75 * s.sprint;
       streakData.forEach((st, i) => {
-        st.z += d * st.v * (0.5 + s.sprint);
-        if (st.z > 10) st.z = -22;
+        st.z -= d * st.v * (0.5 + s.sprint);
+        if (st.z < -22) st.z = 10;
         dummy.position.set(st.x, st.y, st.z);
         dummy.scale.set(1, 1, vis > 0 ? st.len * (0.6 + s.sprint) : 0.0001);
         dummy.updateMatrix();
@@ -140,15 +141,16 @@ export default function Track() {
           <planeGeometry args={[14, 0.6]} />
           <meshBasicMaterial map={chequerTex} />
         </mesh>
-        {/* flag posts with a small FINISH board on the left kerb */}
-        {[-7.2, 7.2].map((x) => (
-          <mesh key={x} position={[x, 0.9, 0]}>
-            <cylinderGeometry args={[0.05, 0.05, 1.8, 10]} />
+        {/* half gantry over the left lanes, a few metres past the line, with the FINISH board
+            (kept left of centre so the top-right of the frame stays clear) */}
+        {[1.5, 7.2].map((x) => (
+          <mesh key={x} position={[x, 1.2, 5]}>
+            <cylinderGeometry args={[0.05, 0.05, 2.4, 10]} />
             <meshStandardMaterial color="#f7f7f4" />
           </mesh>
         ))}
-        <mesh position={[-6.0, 1.45, 0]}>
-          <boxGeometry args={[2.4, 0.3, 0.06]} />
+        <mesh position={[4.35, 2.2, 5]} rotation={[0, Math.PI, 0]}>
+          <boxGeometry args={[5.7, 0.5, 0.06]} />
           <meshStandardMaterial map={finishTex} emissive="#ffffff" emissiveMap={finishTex} emissiveIntensity={0.4} />
         </mesh>
       </group>
@@ -170,10 +172,10 @@ export function Dust() {
     for (let i = 0; i < N; i++) {
       positions[i * 3] = (Math.random() - 0.5) * 8;
       positions[i * 3 + 1] = Math.random() * 1.8;
-      positions[i * 3 + 2] = (Math.random() - 0.5) * 16 - 2;
+      positions[i * 3 + 2] = (Math.random() - 0.5) * 16 - 3;
       vel[i * 3] = (Math.random() - 0.5) * 0.3;
       vel[i * 3 + 1] = 0.05 + Math.random() * 0.2;
-      vel[i * 3 + 2] = 1.2 + Math.random() * 1.5;
+      vel[i * 3 + 2] = -(1.2 + Math.random() * 1.5);
     }
     return { positions, vel };
   }, []);
@@ -181,6 +183,7 @@ export function Dust() {
     const d = Math.min(dt, 0.05);
     const s = storyState(story.get());
     if (!pts.current) return;
+    pts.current.layers.set(1); // layer 1: skipped by the contact-shadow camera
     pts.current.visible = !s.micro;
     const k = 1 + 1.5 * s.sprint;
     const arr = pts.current.geometry.attributes.position.array as Float32Array;
@@ -188,10 +191,10 @@ export function Dust() {
       arr[i * 3] += vel[i * 3] * d;
       arr[i * 3 + 1] += vel[i * 3 + 1] * d;
       arr[i * 3 + 2] += vel[i * 3 + 2] * d * k;
-      if (arr[i * 3 + 2] > 2.6 || arr[i * 3 + 1] > 2.2) {
+      if (arr[i * 3 + 2] < -11 || arr[i * 3 + 1] > 2.2) {
         arr[i * 3] = (Math.random() - 0.5) * 8;
         arr[i * 3 + 1] = Math.random() * 0.5;
-        arr[i * 3 + 2] = -12 + Math.random() * 10;
+        arr[i * 3 + 2] = -2 + Math.random() * 5;
       }
     }
     pts.current.geometry.attributes.position.needsUpdate = true;
