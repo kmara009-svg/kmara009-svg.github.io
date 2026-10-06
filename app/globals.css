@@ -1,0 +1,201 @@
+@import "tailwindcss";
+
+@theme {
+  --color-lime: #c6f432;
+  --color-lime-deep: #a9d81a;
+  --color-ink: #1e1e1e;
+  --color-ink-soft: #2c2c2c;
+  --color-paper: #f7f7f4;
+  --color-paper-2: #ecece6;
+  --color-mute: #5e5e5c;
+  --color-track: #b8442f;
+  --color-risk-red: #c8102e;
+  --color-risk-amber: #f2b705;
+  --color-risk-green: #1b7f4c;
+  --color-risk-orange: #e4772b;
+  --font-sans: "Inter Variable", Inter, Arial, Helvetica, sans-serif;
+}
+
+:root {
+  --stage-scale: 1;
+}
+
+html {
+  background: #1e1e1e;
+  color: #1e1e1e;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  scroll-behavior: auto;
+}
+
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  background: #1e1e1e;
+  overflow-x: hidden;
+}
+
+/* ---------- Presentation mode ---------- */
+html.presenting,
+html.presenting * {
+  cursor: none !important;
+}
+html.presenting .chrome {
+  display: none !important;
+}
+
+/* ---------- 1920x1080 stage ---------- */
+.slide {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+  background: #1e1e1e;
+}
+.stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1920px;
+  height: 1080px;
+  transform: translate(-50%, -50%) scale(var(--stage-scale));
+  transform-origin: center center;
+  overflow: hidden;
+  font-size: 28px;
+  line-height: 1.25;
+}
+.stage.paper {
+  background: #f7f7f4;
+  color: #1e1e1e;
+}
+.stage.dark {
+  background: #1e1e1e;
+  color: #f7f7f4;
+}
+
+/* Subtle running-track line texture */
+.track-lines::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0 238px,
+    rgba(30, 30, 30, 0.07) 238px 240px
+  );
+  mask-image: linear-gradient(180deg, transparent 0%, #000 45%, #000 100%);
+}
+.stage.dark.track-lines::before {
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0 238px,
+    rgba(255, 255, 255, 0.06) 238px 240px
+  );
+}
+
+/* Lime diagonal stripes */
+.lime-stripes {
+  background-image: repeating-linear-gradient(
+    -55deg,
+    #c6f432 0 18px,
+    transparent 18px 36px
+  );
+}
+.ink-stripes {
+  background-image: repeating-linear-gradient(
+    -55deg,
+    rgba(30, 30, 30, 0.9) 0 18px,
+    transparent 18px 36px
+  );
+}
+
+.h-display {
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: -0.03em;
+  line-height: 0.92;
+}
+
+/* webcam-safe zone guard: float so text wraps around the empty top-right corner */
+.corner-guard {
+  float: right;
+  width: 520px;
+  height: 1px;
+  shape-outside: inset(0);
+}
+
+/* QA overlay (append ?qa=1) */
+.qa-zone {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 600px;
+  height: 400px;
+  outline: 3px dashed #ff2d55;
+  background: rgba(255, 45, 85, 0.12);
+  z-index: 50;
+  pointer-events: none;
+}
+
+/* x-ray labels rendered by drei <Html> */
+.xray-label {
+  font-size: 28px;
+  line-height: 1.1;
+  white-space: nowrap;
+  color: #f7f7f4;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  pointer-events: none;
+}
+.xray-label .dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #c6f432;
+  box-shadow: 0 0 24px #c6f432;
+  flex: none;
+}
+.xray-label .name {
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.xray-label .type {
+  color: #c6f432;
+  font-weight: 600;
+}
+
+canvas {
+  display: block;
+}
+
+/* QA mode (?qa=1): shows the 600x400 webcam-safe zone on every stage */
+html.qa .stage::after {
+  content: "600 × 400 webcam zone";
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 600px;
+  height: 400px;
+  outline: 3px dashed #ff2d55;
+  outline-offset: -3px;
+  background: rgba(255, 45, 85, 0.14);
+  color: #ff2d55;
+  font-size: 20px;
+  font-weight: 700;
+  padding: 8px;
+  z-index: 50;
+  pointer-events: none;
+}
