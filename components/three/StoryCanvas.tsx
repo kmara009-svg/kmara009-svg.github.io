@@ -54,10 +54,12 @@ function CameraRig() {
       const s = storyState(sp);
       micro = s.micro;
       if (micro) {
-        const ang = 0.6 + sp * 2.4;
-        const R = 7.8 - 0.6 * s.porosity;
-        desired.pos.set(MICRO_ORIGIN.x + Math.cos(ang) * R, MICRO_ORIGIN.y + 0.7 + 0.5 * Math.sin(sp * 9), MICRO_ORIGIN.z + Math.sin(ang) * R);
-        desired.tgt.copy(MICRO_ORIGIN);
+        // drift gently in front of the bone section, easing closer as the pores open
+        const u = (sp - 0.43) / (0.865 - 0.43);
+        const ang = -0.28 + u * 0.56;
+        const R = 14 - 1.2 * s.porosity;
+        desired.pos.set(MICRO_ORIGIN.x + Math.sin(ang) * R - 0.9, MICRO_ORIGIN.y + 0.3 + 0.35 * Math.sin(sp * 7), MICRO_ORIGIN.z + Math.cos(ang) * R);
+        desired.tgt.set(MICRO_ORIGIN.x - 0.9, MICRO_ORIGIN.y + 0.15, MICRO_ORIGIN.z);
       } else if (s.finish) {
         // back in colour: swing from a front view round to the chase view used between slides
         const t = srange(sp, 0.865, 1);
@@ -137,8 +139,8 @@ function CameraRig() {
 
     if (fog) {
       fog.color.copy(micro ? DARK : HAZE);
-      fog.near = micro ? 4.0 : 260;
-      fog.far = micro ? 12.5 : 1700;
+      fog.near = micro ? 9 : 260;
+      fog.far = micro ? 30 : 1700;
     }
     if (micro !== wasMicro.current) snap = true;
     wasMicro.current = micro;

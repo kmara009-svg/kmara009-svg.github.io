@@ -18,6 +18,7 @@ export default function ScrollStory() {
   const cue = useRef<HTMLDivElement>(null);
   const flash = useRef<HTMLDivElement>(null);
   const microTitle = useRef<HTMLDivElement>(null);
+  const stateTag = useRef<HTMLDivElement>(null);
   const scrim = useRef<HTMLDivElement>(null);
   const heroScrim = useRef<HTMLDivElement>(null);
   const dim = useRef<HTMLDivElement>(null);
@@ -45,6 +46,14 @@ export default function ScrollStory() {
       if (cue.current) cue.current.style.opacity = String(1 - range(p, 0.01, 0.05));
       if (flash.current) flash.current.style.opacity = String(Math.min(1, s.flash));
       if (microTitle.current) microTitle.current.style.opacity = String(range(p, 0.445, 0.47) * (1 - range(p, 0.62, 0.655)));
+      if (stateTag.current) {
+        const text = s.porosity < 0.2 ? "Normal bone" : "Bone loss";
+        if (stateTag.current.textContent !== text) stateTag.current.textContent = text;
+        stateTag.current.classList.toggle("bg-risk-red", text !== "Normal bone");
+        stateTag.current.classList.toggle("text-paper", text !== "Normal bone");
+        stateTag.current.classList.toggle("bg-paper", text === "Normal bone");
+        stateTag.current.classList.toggle("text-ink", text === "Normal bone");
+      }
       if (scrim.current) scrim.current.style.opacity = String(s.micro ? 1 : 0);
       if (heroScrim.current) heroScrim.current.style.opacity = String(heroO);
       if (dim.current) dim.current.style.opacity = String(s.micro || s.finish ? 0 : 0.62 * s.xray);
@@ -138,9 +147,26 @@ export default function ScrollStory() {
 
           {/* MICRO BONE captions */}
           <div ref={microTitle} style={{ opacity: 0 }}>
-            <Box x={96} y={430}>
+            <Box x={96} y={330}>
               <div className="font-bold uppercase tracking-wide text-lime" style={{ fontSize: 30 }}>
-                Inside the femoral neck · trabecular bone, magnified
+                Inside the femur · bone in cross-section
+              </div>
+            </Box>
+            <Box x={96} y={386}>
+              <div ref={stateTag} className="inline-block bg-paper px-5 py-2 font-extrabold uppercase text-ink" style={{ fontSize: 28, clipPath: "polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%)" }}>
+                Normal bone
+              </div>
+            </Box>
+            <Box x={96} y={640}>
+              <div className="flex flex-col gap-3 text-paper" style={{ fontSize: 28 }}>
+                <div className="flex items-center gap-4">
+                  <span className="inline-block h-6 w-6 rounded-sm" style={{ background: "#ede0c8" }} />
+                  <span><b>Cortical bone</b> · the dense outer shell</span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className="inline-block h-6 w-6 rounded-sm" style={{ background: "#e59a3f" }} />
+                  <span><b>Trabecular bone</b> · the spongy interior, lost first</span>
+                </div>
               </div>
             </Box>
           </div>

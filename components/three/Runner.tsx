@@ -143,7 +143,7 @@ export default function Runner() {
     ring(bones, "mixamorigSpine1", 5.0, 11.8, bone);
     ring(bones, "mixamorigSpine2", 2.0, 11.4, bone);
     ring(bones, "mixamorigSpine2", 5.6, 10.4, bone);
-    blob(bones, "mixamorigHead", [0, 9.5, 0.5], [7.8, 8.8, 9.2], bone);
+    blob(bones, "mixamorigHead", [0, 9.0, -0.5], [6.4, 7.4, 7.2], bone); // cranium, kept inside the head so it never shows over her face
 
     const mixer = new THREE.AnimationMixer(model);
     return { model, bodyMats, bones, mixer };
@@ -261,8 +261,9 @@ export default function Runner() {
       m.opacity = 1 - 0.88 * x;
       m.depthWrite = x < 0.05;
     }
-    mats.bone.opacity = x * 0.95;
-    mats.risk.opacity = x;
+    // the skeleton only appears once her body has gone translucent, so nothing ghosts over her face beforehand
+    mats.bone.opacity = srange(x, 0.45, 1) * 0.95;
+    mats.risk.opacity = srange(x, 0.35, 1);
     mats.risk.emissiveIntensity = 0.8 + 1.4 * x;
     mats.risk.emissive.copy(LIME);
 

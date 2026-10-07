@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Lenis from "lenis";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -99,11 +99,17 @@ export default function Experience() {
     lenisRef.current = lenis;
     let snapTimer: number | undefined;
     const noSnap = new URLSearchParams(window.location.search).get("nosnap") === "1";
+    let lastP = -1;
     lenis.on("scroll", (e: Lenis) => {
       ScrollTrigger.update();
-      setProgress(e.limit > 0 ? e.scroll / e.limit : 0);
+      // state updates re-render the chrome only (the heavy tree below is memoised), and only when they change visibly
+      const pr = e.limit > 0 ? Math.round((e.scroll / e.limit) * 400) / 400 : 0;
+      if (pr !== lastP) {
+        lastP = pr;
+        setProgress(pr);
+      }
       const idx = nearest(e.scroll);
-      setCurrent(idx);
+      setCurrent((c) => (c === idx ? c : idx));
       window.clearTimeout(snapTimer);
       snapTimer = window.setTimeout(() => {
         if (animating.current || noSnap) return;
@@ -201,18 +207,28 @@ export default function Experience() {
 
   const label = stops.current[current]?.label ?? "";
 
+  /* the scene and every slide are built once; scroll-driven state never re-renders them */
+  const world = useMemo(
+    () => (
+      <>
+        <div className="fixed inset-0 z-0 bg-ink">
+          <StoryCanvas />
+        </div>
+        <div className="relative z-10">
+          <ScrollStory />
+          <IntroSections />
+          <CareSections />
+          <ProgramSections />
+          <ClosingSections />
+        </div>
+      </>
+    ),
+    []
+  );
+
   return (
     <main className="relative">
-      <div className="fixed inset-0 z-0 bg-ink">
-        <StoryCanvas />
-      </div>
-      <div className="relative z-10">
-      <ScrollStory />
-      <IntroSections />
-      <CareSections />
-      <ProgramSections />
-      <ClosingSections />
-      </div>
+      {world}
 
       {/* chrome: hidden in presentation mode. Nothing is ever placed top-right. */}
       <div className="chrome fixed left-6 top-5 z-40 flex items-center gap-4 text-paper mix-blend-difference" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.08em" }}>
