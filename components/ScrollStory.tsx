@@ -1,20 +1,17 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import dynamic from "next/dynamic";
+import { useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { hero } from "@/lib/content";
 import { STORY_VH, range, srange, story, storyState } from "@/lib/story";
+import { scene } from "@/lib/scene";
 import { XRAY_LABELS, labelEls } from "@/lib/labels";
 import { Box } from "./ui/primitives";
-
-const StoryCanvas = dynamic(() => import("./three/StoryCanvas"), { ssr: false });
 
 gsap.registerPlugin(ScrollTrigger);
 
 export default function ScrollStory() {
   const section = useRef<HTMLElement>(null);
-  const [active, setActive] = useState(true);
 
   // overlay refs
   const heroBlock = useRef<HTMLDivElement>(null);
@@ -22,6 +19,8 @@ export default function ScrollStory() {
   const flash = useRef<HTMLDivElement>(null);
   const microTitle = useRef<HTMLDivElement>(null);
   const scrim = useRef<HTMLDivElement>(null);
+  const heroScrim = useRef<HTMLDivElement>(null);
+  const dim = useRef<HTMLDivElement>(null);
   const chips = useRef<(HTMLDivElement | null)[]>([]);
   const words = useRef<(HTMLDivElement | null)[]>([]);
 
@@ -31,8 +30,10 @@ export default function ScrollStory() {
       start: "top top",
       end: "bottom bottom",
       scrub: true,
-      onUpdate: (self) => story.set(self.progress),
-      onToggle: (self) => setActive(self.isActive),
+      onUpdate: (self) => {
+        story.set(self.progress);
+        scene.setStory(self.progress);
+      },
     });
     const unsub = story.subscribe((p) => {
       const s = storyState(p);
@@ -45,6 +46,8 @@ export default function ScrollStory() {
       if (flash.current) flash.current.style.opacity = String(Math.min(1, s.flash));
       if (microTitle.current) microTitle.current.style.opacity = String(range(p, 0.445, 0.47) * (1 - range(p, 0.62, 0.655)));
       if (scrim.current) scrim.current.style.opacity = String(s.micro ? 1 : 0);
+      if (heroScrim.current) heroScrim.current.style.opacity = String(heroO);
+      if (dim.current) dim.current.style.opacity = String(s.micro || s.finish ? 0 : 0.62 * s.xray);
       const chipT = [0.47, 0.52, 0.57];
       chips.current.forEach((el, i) => {
         if (!el) return;
@@ -68,8 +71,10 @@ export default function ScrollStory() {
 
   return (
     <section id="story" ref={section} className="relative" style={{ height: `${STORY_VH * 100}vh` }}>
-      <div className="sticky top-0 h-screen overflow-hidden bg-ink">
-        <StoryCanvas active={active} />
+      <div className="sticky top-0 h-screen overflow-hidden">
+        {/* daylight scrim behind the hero headline, and a dimmer for the X-ray */}
+        <div ref={heroScrim} className="pointer-events-none absolute inset-0" style={{ background: "linear-gradient(90deg, rgba(20,20,22,0.88) 0%, rgba(20,20,22,0.7) 34%, rgba(20,20,22,0.25) 56%, rgba(20,20,22,0) 72%)" }} />
+        <div ref={dim} className="pointer-events-none absolute inset-0" style={{ opacity: 0, background: "radial-gradient(ellipse at 55% 50%, rgba(8,12,24,0.45) 0%, rgba(8,12,24,0.85) 70%, rgba(8,12,24,0.95) 100%)" }} />
         {/* left-side scrim so captions stay readable over the bone lattice */}
         <div ref={scrim} className="pointer-events-none absolute inset-0" style={{ opacity: 0, transition: "opacity 0.25s linear", background: "linear-gradient(90deg, rgba(20,20,22,0.9) 0%, rgba(20,20,22,0.72) 40%, rgba(20,20,22,0.25) 70%, rgba(20,20,22,0) 100%)" }} />
 

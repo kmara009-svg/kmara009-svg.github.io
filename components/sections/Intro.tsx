@@ -17,7 +17,7 @@ function BigNumber({ value, countTo }: { value: string; countTo?: number }) {
 
 export function Glance() {
   return (
-    <Slide id="glance" label="Shantha at a glance">
+    <Slide id="glance" index={1} label="Shantha at a glance">
       <Header eyebrow={glance.eyebrow} title={glance.title} />
       {glance.stats.map((s, i) => (
         <Box key={s.label} x={96 + (i % 2) * 624} y={320 + Math.floor(i / 2) * 234} w={600} h={210}>
@@ -45,7 +45,7 @@ export function Energy() {
   const f = energy.formula;
   const box = "flex items-center justify-center bg-white border-2 border-ink font-bold";
   return (
-    <Slide id="energy" label="Energy availability">
+    <Slide id="energy" index={2} label="Energy availability">
       <Header eyebrow={energy.eyebrow} title={energy.title} />
       <Box x={96} y={320} w={1224} h={230}>
         <motion.div {...reveal} className="relative h-full w-full">
@@ -99,7 +99,7 @@ export function Skeleton() {
     { text: skeleton.lower[1], tone: "#1b7f4c" },
   ];
   return (
-    <Slide id="skeleton" label="Where the skeleton pays">
+    <Slide id="skeleton" index={3} label="Where the skeleton pays">
       <Header eyebrow={skeleton.eyebrow} title={skeleton.title} />
       <Box x={96} y={320} w={440} h={660}>
         <motion.img {...reveal} src="/images/skeleton-diagram.png" alt="Lower-limb skeleton marking high-risk trabecular sites (pelvis and sacrum, femoral neck) and lower-risk cortical sites (tibial shaft, metatarsals)" className="h-full w-full object-contain" />
@@ -138,7 +138,7 @@ export function Skeleton() {
 export function Hormones() {
   const tone: Record<string, string> = { ink: "bg-ink text-paper", paper: "bg-white text-ink border-2 border-paper-2", red: "bg-risk-red text-paper" };
   return (
-    <Slide id="hormones" label="Empty tank, fragile bone">
+    <Slide id="hormones" index={4} label="Empty tank, fragile bone">
       <Header eyebrow={hormones.eyebrow} title={hormones.title} />
       {hormones.flow.map((f, i) => (
         <div key={f.name}>
@@ -186,7 +186,7 @@ export function Hormones() {
 
 export function NormalVsReds() {
   return (
-    <Slide id="normal-vs-reds" label="Normal vs RED-S">
+    <Slide id="normal-vs-reds" index={5} label="Normal vs RED-S">
       <Header eyebrow={normalVsReds.eyebrow} title={normalVsReds.title} />
       <Box x={96} y={420}>
         <Table head={normalVsReds.head} rows={normalVsReds.rows} widths={[330, 470, 420, 508]} rowH={78} />
@@ -203,7 +203,7 @@ export function NormalVsReds() {
 
 export function Signs() {
   return (
-    <Slide id="signs" label="Signs & severity">
+    <Slide id="signs" index={6} label="Signs & severity">
       <Header eyebrow={signs.eyebrow} title={signs.title} />
       {signs.signs.map((s, i) => (
         <Box key={s.text} x={96 + (i % 2) * 444} y={320 + Math.floor(i / 2) * 174} w={420} h={150}>

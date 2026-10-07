@@ -4,8 +4,10 @@ import { useFrame, useLoader } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { useEffect, useMemo, useRef } from "react";
 import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
-import { story, storyState } from "@/lib/story";
+import { storyState, srange, smooth, range } from "@/lib/story";
 import { XRAY_LABELS, labelEls } from "@/lib/labels";
+import { SLIDE_COUNT, STORY_END_D, markerD, runnerPose, scene } from "@/lib/scene";
+import { headingOf, pointAt } from "@/lib/trackPath";
 
 /* Rigged, textured runner (Mixamo "Michelle" from the three.js examples) driven by a
    motion-captured Mixamo run clip retargeted onto her skeleton (public/models/run.json).
@@ -81,6 +83,7 @@ export default function Runner() {
       if (mesh.isSkinnedMesh) {
         mesh.frustumCulled = false;
         mesh.renderOrder = 2;
+        mesh.castShadow = true;
         const src = (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) as THREE.MeshStandardMaterial[];
         const cloned = src.map((m) => {
           const c = m.clone() as BodyMat;
@@ -156,10 +159,28 @@ export default function Runner() {
   const tmp = useMemo(() => new THREE.Vector3(), []);
   const tmp2 = useMemo(() => new THREE.Vector3(), []);
 
+  const lastD = useRef(0);
   useFrame(({ camera, size }, dt) => {
-    const p = story.get();
-    const s = storyState(p);
-    if (root.current) root.current.visible = !s.micro;
+    const st = scene.get();
+    const s = storyState(st.mode === "story" ? st.storyP : 1);
+    // where she is along the lap
+    let d: number;
+    if (st.mode === "story") d = 34 + (STORY_END_D - 34) * srange(st.storyP, 0, 1);
+    else d = markerD(st.trip - 1) + (markerD(st.trip) - markerD(st.trip - 1)) * smooth(range(st.q, 0.28, 0.72));
+    const dd = Math.min(dt, 0.05);
+    const speed = dd > 0 ? Math.min(Math.abs(d - lastD.current) / dd, 14) : 0;
+    lastD.current = d;
+    runnerPose.d = d;
+    runnerPose.speed = speed;
+    const tp = pointAt(d);
+    runnerPose.x = tp.x;
+    runnerPose.z = tp.z;
+    runnerPose.heading = headingOf(tp);
+    if (root.current) {
+      root.current.position.set(tp.x, 0, tp.z);
+      root.current.rotation.y = runnerPose.heading;
+      root.current.visible = !s.micro;
+    }
     if (s.micro) {
       XRAY_LABELS.forEach((l) => {
         const el = labelEls[l.id];
@@ -168,10 +189,12 @@ export default function Runner() {
       return;
     }
 
-    mixer.update(Math.min(dt, 0.05) * (1 + 0.4 * s.sprint));
+    // clip speed follows her ground speed (the mocap run is roughly 3.4 m/s)
+    const timeScale = Math.max(0.85, Math.min(2.4, speed / 3.4 + (st.trip >= SLIDE_COUNT && st.mode === "trip" ? 0.3 : 0)));
+    mixer.update(dd * timeScale);
 
     // X-ray crossfade on the skinned body
-    const x = s.finish ? 0 : s.xray;
+    const x = st.mode !== "story" || s.finish ? 0 : s.xray;
     for (const m of bodyMats) {
       m.color.copy(m.userData.base!).lerp(XRAY_BODY, x);
       m.emissive.copy(BLACK).lerp(XRAY_BODY, x * 0.9);

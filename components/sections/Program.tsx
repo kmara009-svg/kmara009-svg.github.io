@@ -20,7 +20,7 @@ function Demand({ n }: { n: number }) {
 export function Needs() {
   const rows = needs.rows.map((r) => [r.quality, <Demand key="d" n={r.demand} />, <span key="l" className="text-mute">{r.level}</span>, r.target]);
   return (
-    <Slide id="needs" label="What she must rebuild">
+    <Slide id="needs" index={12} label="What she must rebuild">
       <Header eyebrow={needs.eyebrow} title={needs.title} />
       <Box x={96} y={320}>
         <Table head={needs.head} rows={rows} widths={[364, 190, 180, 490]} rowH={68} fontSize={28} />
@@ -41,7 +41,7 @@ export function Needs() {
 
 export function Monitoring() {
   return (
-    <Slide id="monitoring" label="Monitoring dashboard">
+    <Slide id="monitoring" index={13} label="Monitoring dashboard">
       <Header eyebrow={monitoring.eyebrow} title={monitoring.title} />
       <Box x={96} y={420}>
         <Table head={monitoring.head} rows={monitoring.rows} widths={[320, 520, 360, 528]} rowH={76} />
@@ -53,7 +53,7 @@ export function Monitoring() {
 
 export function Decisions() {
   return (
-    <Slide id="decisions" label="Data drives decisions">
+    <Slide id="decisions" index={14} label="Data drives decisions">
       <Header eyebrow={decisions.eyebrow} title={decisions.title} />
       {decisions.columns.map((c, i) => (
         <Box key={c.title} x={96 + i * 592} y={420} w={544} h={500}>
@@ -82,7 +82,7 @@ export function Decisions() {
 
 export function Phases() {
   return (
-    <Slide id="phases" label="Strength in three phases">
+    <Slide id="phases" index={15} label="Strength in three phases">
       <Header eyebrow={phases.eyebrow} title={phases.title} />
       {phases.phases.map((p, i) => (
         <Box key={p.name} x={96} y={320 + i * 224} w={1224} h={200}>
@@ -113,7 +113,7 @@ export function Phases() {
 
 export function Session() {
   return (
-    <Slide id="session" label="Session · Week 6">
+    <Slide id="session" index={16} label="Session · Week 6">
       <Header eyebrow={session.eyebrow} title={session.title} />
       <Box x={96} y={420}>
         <Table head={session.head} rows={session.rows} widths={[560, 220, 380, 280, 288]} rowH={66} />
@@ -130,7 +130,7 @@ export function Session() {
 
 export function Aerobic() {
   return (
-    <Slide id="aerobic" label="Today's aerobic session">
+    <Slide id="aerobic" index={17} label="Today's aerobic session">
       <Header eyebrow={aerobic.eyebrow} title={aerobic.title} />
       <Box x={96} y={320} w={1000} h={400}>
         <IntervalChart />
@@ -179,7 +179,7 @@ export function ReturnToSport() {
   ];
   const tones = { paper: "paper", ink: "ink", lime: "lime" } as const;
   return (
-    <Slide id="return" label="Criteria, not calendar">
+    <Slide id="return" index={18} label="Criteria, not calendar">
       <Header eyebrow={returnToSport.eyebrow} title={returnToSport.title} />
       <Box x={96} y={320} w={544} h={270}>
         <motion.div {...reveal} className="h-full w-full overflow-hidden" style={{ clipPath: "polygon(0 0, 100% 0, 100% 100%, 0 100%)" }}>
@@ -214,7 +214,7 @@ export function ReturnToSport() {
 
 export function Evidence() {
   return (
-    <Slide id="evidence" label="Evidence & its limits">
+    <Slide id="evidence" index={19} label="Evidence & its limits">
       <Header eyebrow={evidence.eyebrow} title={evidence.title} />
       <Box x={96} y={420}>
         <Table head={evidence.head} rows={evidence.rows} widths={[460, 620, 648]} rowH={76} />

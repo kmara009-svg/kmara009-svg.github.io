@@ -22,6 +22,7 @@ Pushing to `main` deploys to GitHub Pages through `.github/workflows/deploy.yml`
 
 * Every stop is a 1920×1080 stage, scaled to fit the window. Record at 1920×1080 for a 1:1 layout.
 * `→` `↓` `space` `enter` advance, `←` `↑` go back, `Home` / `End` jump. The 3D story has six beats; each slide is one stop.
+* Between slides the camera lifts to a satellite view of the stadium while she runs to the next marker on the oval, then dives back to track level and the slide rises over the scene. The final stop is the finish line.
 * Press `P` for presentation mode: fullscreen, cursor hidden, navigation chrome hidden. `Esc` leaves it.
 * The top-right 600×400 px of every stop is kept empty for a webcam overlay. Open `/?qa=1` to see that zone outlined.
 * All text is 28 px or larger at 1920×1080.
@@ -34,7 +35,9 @@ Pushing to `main` deploys to GitHub Pages through `.github/workflows/deploy.yml`
 | `lib/story.ts` | Scroll-story progress store, beats and phase timings |
 | `components/Experience.tsx` | Lenis smooth scroll, stop snapping, keyboard navigation, presentation mode |
 | `components/ScrollStory.tsx` | Pinned hero → X-ray → bone → finish-line story with HTML overlays |
-| `components/three/` | Rigged runner + bone-parented X-ray skeleton, track, dust, marching-cubes trabecular bone, camera rig |
+| `components/three/` | Stadium (oval, stands, crowd, sky, sun), rigged runner + bone-parented X-ray skeleton, dust, marching-cubes bone, camera rig |
+| `lib/trackPath.ts` | The 400 m oval: position and heading at any distance along lane 1 |
+| `lib/scene.ts` | Scene state shared between the scroll triggers and the 3D scene; slide markers along the lap |
 | `public/models/` | `runner.glb` (Mixamo "Michelle" character, from the three.js examples) and `run.json` (a Mixamo run clip retargeted onto her rig) |
 | `components/sections/` | One component per slide |
 | `components/charts/` | Risk bars, energy-availability zone bar, interval chart |
@@ -44,6 +47,7 @@ The injury-report slide uses `public/images/injury-report.png`; swap that file t
 
 ## The 3D story
 
+* **Stadium**: a full 400 m oval (two 84.39 m straights, 37.1 m bends, eight lanes) with a grass infield, a main stand and a north stand holding about 7,000 instanced spectators (per-seat colours, a vertex-shader bob), floodlights, a big screen, trees and buildings beyond, a Preetham sky, a shadow-casting sun that follows the runner, and image-based lighting. Everything is procedural; no external textures.
 * **Runner**: a textured, rigged Mixamo character driven by a motion-captured Mixamo run clip. The clip was retargeted onto her skeleton offline (per-bone rest-pose offsets, then `SkeletonUtils.retargetClip`) and stored as `public/models/run.json`. To use a different character, export a Mixamo rig as GLB, retarget the clip onto it the same way and point `components/three/Runner.tsx` at the new files.
 * **X-ray**: her body fades to a translucent glow while capsule bones parented to her real rig bones light up. The pelvis, sacrum, femoral neck, tibia and foot bones use the lime "high-risk" material.
 * **Bone**: trabecular bone is a warped gyroid isosurface polygonised with three's `MarchingCubes`. Scroll progress drives the trabecular thickness and a grain term that perforates the network, so it thins to an osteoporotic lattice and rebuilds again.

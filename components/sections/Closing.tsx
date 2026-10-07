@@ -6,12 +6,9 @@ import { closing, references } from "@/lib/content";
 
 export function ClosingAsks() {
   return (
-    <Slide id="closing" label="Fuel first. Load smart." tone="dark">
-      <div className="absolute inset-0">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/images/golden-hour.jpg" alt="Woman running at golden hour" className="h-full w-full object-cover" style={{ objectPosition: "center 40%" }} />
-        <div className="absolute inset-0" style={{ background: "linear-gradient(90deg, rgba(30,30,30,0.92) 0%, rgba(30,30,30,0.7) 55%, rgba(30,30,30,0.35) 100%)" }} />
-      </div>
+    <Slide id="closing" index={25} label="Fuel first. Load smart." tone="dark" stageStyle={{ background: "transparent" }}>
+      {/* the finish line: the live 3D scene stays visible behind a dark gradient */}
+      <div className="absolute inset-0" style={{ background: "linear-gradient(90deg, rgba(20,20,22,0.9) 0%, rgba(20,20,22,0.72) 48%, rgba(20,20,22,0.12) 72%, rgba(20,20,22,0) 100%)" }} />
       <div className="absolute lime-stripes" style={{ left: 0, top: 0, width: 36, height: 1080, opacity: 0.9 }} />
       {closing.lines.map((l, i) => (
         <Box key={l} x={96} y={330 + i * 130} w={1728}>
@@ -40,7 +37,7 @@ export function References() {
   return (
     <>
       {references.map((r, i) => (
-        <Slide key={r.title} id={`references-${i + 1}`} label={`References ${i + 1}/${references.length}`}>
+        <Slide key={r.title} id={`references-${i + 1}`} index={20 + i} label={`References ${i + 1}/${references.length}`}>
           <Header eyebrow={r.eyebrow} title={r.title} />
           <Box x={96} y={300} w={1728}>
             <div className="corner-guard" style={{ height: 130 }} />
@@ -72,8 +69,8 @@ export function References() {
 export function ClosingSections() {
   return (
     <>
-      <ClosingAsks />
       <References />
+      <ClosingAsks />
     </>
   );
 }
