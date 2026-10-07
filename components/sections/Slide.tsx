@@ -28,12 +28,14 @@ export function Slide({ id, label, index, tone = "paper", stageStyle, children }
       w.style.transform = "translateY(150vh)";
       w.style.opacity = "0";
       w.style.pointerEvents = "none";
+      w.style.willChange = "auto";
     };
     const show = () => {
       if (shown) return;
       shown = true;
       tween?.kill();
       const o = { t: 0 };
+      w.style.willChange = "opacity, transform"; // composited on the GPU while it fades, so the page never repaints it per frame
       w.style.visibility = "visible";
       const apply = () => {
         w.style.opacity = String(o.t);
@@ -50,10 +52,11 @@ export function Slide({ id, label, index, tone = "paper", stageStyle, children }
       tween?.kill();
       const o = { t: 1 };
       w.style.pointerEvents = "none";
+      w.style.willChange = "opacity, transform";
       tween = gsap.to(o, {
         t: 0,
-        duration: fast ? 0.22 : 0.3,
-        ease: "power2.in",
+        duration: fast ? 0.22 : 0.28,
+        ease: "power1.in",
         onUpdate: () => {
           w.style.opacity = String(o.t);
           w.style.transform = `translateY(${-40 * (1 - o.t)}px) scale(${1 - 0.03 * (1 - o.t)})`;
