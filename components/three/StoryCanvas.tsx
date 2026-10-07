@@ -10,7 +10,7 @@ import Billboards from "./Billboards";
 import { Dust } from "./Effects";
 import MicroBone, { MICRO_ORIGIN } from "./MicroBone";
 import { story, storyState, srange, range } from "@/lib/story";
-import { FINISH_INDEX, runnerPose, scene } from "@/lib/scene";
+import { FINISH_INDEX, SLIDE_COUNT, runnerPose, scene } from "@/lib/scene";
 import { pointAt, relative } from "@/lib/trackPath";
 import { signPose } from "@/lib/signs";
 
@@ -90,8 +90,9 @@ function CameraRig() {
       const last = i === FINISH_INDEX;
       const prevFinish = i - 1 === FINISH_INDEX;
       const zoomOut = 1 - srange(q, 0.0, 0.1);
-      const pull = Math.min(srange(q, 0.1, 0.3), 1 - srange(q, 0.46, 0.64));
-      const approach = srange(q, 0.62, 0.8);
+      // she halts at q 0.66 while the camera is still behind her, then it swings onto the sign
+      const pull = Math.min(srange(q, 0.1, 0.3), 1 - srange(q, 0.48, 0.64));
+      const approach = srange(q, 0.66, 0.84);
       const zoomIn = srange(q, 0.86, 0.975);
       // chase view with the pull-back
       const w = VIEWS.wide;
@@ -100,8 +101,9 @@ function CameraRig() {
       // sign views (world space)
       const signView = (n: number, zoomed: boolean, pos: THREE.Vector3, tgt: THREE.Vector3) => {
         const sp = signPose(n);
-        const dist = zoomed ? 3.1 : 9.5; // the wider view keeps her in frame, standing in front of the sign
-        pos.set(sp.x + sp.nx * dist, zoomed ? 2.25 : 2.4, sp.z + sp.nz * dist);
+        const wide = n >= SLIDE_COUNT; // the references sign: she stands in front of it, so keep her in frame
+        const dist = zoomed ? 3.1 : wide ? 9.5 : 7.5;
+        pos.set(sp.x + sp.nx * dist, zoomed ? 2.25 : wide ? 2.4 : 2.1, sp.z + sp.nz * dist);
         tgt.set(sp.x, 2.3, sp.z);
       };
       if (i > 1 && zoomOut > 0) {
@@ -210,7 +212,7 @@ export default function StoryCanvas() {
     <CanvasBoundary fallback={<StaticFallback />}>
       <div className="absolute inset-0">
         <Canvas
-          dpr={[1, 1.25]}
+          dpr={1}
           shadows={{ type: THREE.PCFShadowMap }}
           camera={{ fov: 34, near: 0.3, far: 3000, position: [0, 1.3, 4.3] }}
           gl={{ antialias: false, powerPreference: "high-performance", stencil: false }}

@@ -11,6 +11,7 @@ import { IntroSections } from "./sections/Intro";
 import { CareSections } from "./sections/Care";
 import { ProgramSections } from "./sections/Program";
 import { ClosingSections } from "./sections/Closing";
+import { LEAVE_EVENT } from "./sections/Slide";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -72,10 +73,13 @@ export default function Experience() {
       const lenis = lenisRef.current;
       if (!lenis || !stops.current.length) return;
       const idx = Math.max(0, Math.min(stops.current.length - 1, i));
+      const cur = nearest(lenis.scroll);
+      // moving on from a slide: let it start leaving now rather than when the scroll has crept past its stop
+      if (idx > cur) document.dispatchEvent(new CustomEvent(LEAVE_EVENT, { detail: { id: stops.current[cur].id } }));
       animating.current = true;
       const dist = Math.abs(stops.current[idx].y - lenis.scroll) / window.innerHeight;
-      const trip = dist > 1.8; // a slide trip is ~2.2 screens: ~5.5 s with a sine ease-in-out, which leaves the slide promptly but keeps the run even
-      if (duration >= 1.5) duration = trip ? Math.min(6.5, 2.2 + 1.5 * dist) : Math.min(3, 1.1 + 0.85 * dist);
+      const trip = dist > 1.8; // a slide trip is ~2.2 screens: ~6.5 s with a sine ease-in-out, which keeps her run unhurried
+      if (duration >= 1.5) duration = trip ? Math.min(7.5, 2.8 + 1.7 * dist) : Math.min(3, 1.1 + 0.85 * dist);
       lenis.scrollTo(stops.current[idx].y, {
         duration,
         easing: trip ? (t) => 0.5 - 0.5 * Math.cos(Math.PI * t) : (t) => 1 - Math.pow(1 - t, 3),
@@ -86,7 +90,7 @@ export default function Experience() {
         },
       });
     },
-    []
+    [nearest]
   );
 
   /* ---------- Lenis + ScrollTrigger + snapping ---------- */
