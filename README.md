@@ -22,7 +22,7 @@ Pushing to `main` deploys to GitHub Pages through `.github/workflows/deploy.yml`
 
 * Every stop is a 1920×1080 stage, scaled to fit the window. Record at 1920×1080 for a 1:1 layout.
 * `→` `↓` `space` `enter` advance, `←` `↑` go back, `Home` / `End` jump. The 3D story has six beats; each slide is one stop.
-* Between slides the camera lifts to a satellite view of the stadium while she runs to the next marker on the oval, then dives back to track level and the slide rises over the scene. The final stop is the finish line.
+* Between slides she runs to the next marker on the oval with the chase camera pulling back a little, then the slide rises over the scene. The final stop is the finish line.
 * Press `P` for presentation mode: fullscreen, cursor hidden, navigation chrome hidden. `Esc` leaves it.
 * The top-right 600×400 px of every stop is kept empty for a webcam overlay. Open `/?qa=1` to see that zone outlined.
 * All text is 28 px or larger at 1920×1080.

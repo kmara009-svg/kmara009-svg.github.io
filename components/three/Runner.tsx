@@ -165,7 +165,13 @@ export default function Runner() {
     const s = storyState(st.mode === "story" ? st.storyP : 1);
     // where she is along the lap
     let d: number;
-    if (st.mode === "story") d = 34 + (STORY_END_D - 34) * srange(st.storyP, 0, 1);
+    // in the story she holds still while the X-ray is on, so the bone labels stay put
+    const sp = st.storyP;
+    const hold = srange(sp, 0.19, 0.23) * (1 - srange(sp, 0.4, 0.44));
+    if (st.mode === "story") {
+      const f = sp < 0.21 ? (sp / 0.21) * 0.38 : sp < 0.42 ? 0.38 : 0.38 + ((sp - 0.42) / 0.58) * 0.62;
+      d = 34 + (STORY_END_D - 34) * f;
+    }
     else d = markerD(st.trip - 1) + (markerD(st.trip) - markerD(st.trip - 1)) * smooth(range(st.q, 0.28, 0.72));
     const dd = Math.min(dt, 0.05);
     const speed = dd > 0 ? Math.min(Math.abs(d - lastD.current) / dd, 14) : 0;
@@ -191,7 +197,7 @@ export default function Runner() {
 
     // clip speed follows her ground speed (the mocap run is roughly 3.4 m/s)
     const timeScale = Math.max(0.85, Math.min(2.4, speed / 3.4 + (st.trip >= SLIDE_COUNT && st.mode === "trip" ? 0.3 : 0)));
-    mixer.update(dd * timeScale);
+    mixer.update(dd * timeScale * (st.mode === "story" ? 1 - hold : 1));
 
     // X-ray crossfade on the skinned body
     const x = st.mode !== "story" || s.finish ? 0 : s.xray;
