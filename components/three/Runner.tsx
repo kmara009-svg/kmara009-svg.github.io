@@ -172,7 +172,7 @@ export default function Runner() {
       const f = sp < 0.21 ? (sp / 0.21) * 0.38 : sp < 0.42 ? 0.38 : 0.38 + ((sp - 0.42) / 0.58) * 0.62;
       d = 34 + (STORY_END_D - 34) * f;
     }
-    else d = markerD(st.trip - 1) + (markerD(st.trip) - markerD(st.trip - 1)) * smooth(range(st.q, 0.14, 0.7));
+    else d = markerD(st.trip - 1) + (markerD(st.trip) - markerD(st.trip - 1)) * smooth(range(st.q, 0.1, 0.7));
     const dd = Math.min(dt, 0.05);
     const speed = dd > 0 ? Math.min(Math.abs(d - lastD.current) / dd, 14) : 0;
     lastD.current = d;
