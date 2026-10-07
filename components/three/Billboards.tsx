@@ -1,6 +1,7 @@
 "use client";
 import * as THREE from "three";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
+import { useThree } from "@react-three/fiber";
 import { SIGNS, signPose } from "@/lib/signs";
 import { FINISH_INDEX, SLIDE_COUNT } from "@/lib/scene";
 
@@ -66,6 +67,15 @@ function signTexture(eyebrow: string, title: string, index: number) {
   return t;
 }
 
+function Warmup({ textures }: { textures: THREE.Texture[] }) {
+  const { gl, scene, camera } = useThree();
+  useEffect(() => {
+    for (const t of textures) gl.initTexture(t);
+    gl.compile(scene, camera);
+  }, [gl, scene, camera, textures]);
+  return null;
+}
+
 export default function Billboards() {
   const items = useMemo(
     () =>
@@ -74,8 +84,10 @@ export default function Billboards() {
   );
   const post = useMemo(() => new THREE.MeshStandardMaterial({ color: "#2b2c2f", roughness: 0.6, metalness: 0.4 }), []);
   const back = useMemo(() => new THREE.MeshStandardMaterial({ color: "#2b2c2f", roughness: 0.8 }), []);
+  const textures = useMemo(() => items.map((s) => s.tex), [items]);
   return (
     <group>
+      <Warmup textures={textures} />
       {items.map((s) => (
         <group key={s.index} position={[s.pose.x, 0, s.pose.z]} rotation={[0, s.pose.yaw, 0]}>
           {[-1.7, 1.7].map((x) => (
