@@ -6,16 +6,19 @@ import { useEffect, useMemo, useRef } from "react";
 import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
 import { storyState, srange, smooth, range } from "@/lib/story";
 import { XRAY_LABELS, labelEls } from "@/lib/labels";
-import { SLIDE_COUNT, STORY_END_D, markerD, runnerPose, scene } from "@/lib/scene";
+import { FINISH_INDEX, STORY_END_D, runnerPose, scene } from "@/lib/scene";
 import { headingOf, pointAt } from "@/lib/trackPath";
+import { tripPose } from "@/lib/runnerPath";
 
-/* Rigged, textured runner (Mixamo "Michelle" from the three.js examples) driven by a
-   motion-captured Mixamo run clip retargeted onto her skeleton (public/models/run.json).
-   The glowing X-ray skeleton is built from capsules parented to her actual rig bones,
-   so it runs with her. Bone-local units are centimetres (the rig root is scaled 0.01). */
+/* Rigged, textured runner (Mixamo "Michelle" from the three.js examples) driven by
+   motion-captured Mixamo run, walk and idle clips retargeted onto her skeleton
+   (public/models/*.json) and blended by her ground speed, so she slows to a walk and
+   stands still in front of each sign. The glowing X-ray skeleton is built from capsules
+   parented to her actual rig bones, so it runs with her. Bone-local units are
+   centimetres (the rig root is scaled 0.01). */
 
 const MODEL = "/models/runner.glb";
-const CLIP = "/models/run.json";
+const CLIPS = ["/models/run.json", "/models/walk.json", "/models/idle.json"];
 useGLTF.preload(MODEL);
 
 const LIME = new THREE.Color("#c6f432");
@@ -69,8 +72,8 @@ function ring(bones: Record<string, THREE.Bone>, at: string, y: number, radius: 
 
 export default function Runner() {
   const gltf = useGLTF(MODEL);
-  const clipText = useLoader(THREE.FileLoader, CLIP) as unknown as string;
-  const clip = useMemo(() => THREE.AnimationClip.parse(JSON.parse(clipText)), [clipText]);
+  const clipTexts = useLoader(THREE.FileLoader, CLIPS) as unknown as string[];
+  const clips = useMemo(() => clipTexts.map((t) => THREE.AnimationClip.parse(JSON.parse(t))), [clipTexts]);
   const mats = useMemo(makeBoneMaterials, []);
 
   const { model, bodyMats, bones, mixer } = useMemo(() => {
@@ -146,45 +149,75 @@ export default function Runner() {
     return { model, bodyMats, bones, mixer };
   }, [gltf, mats]);
 
+  const actions = useRef<{ run: THREE.AnimationAction; walk: THREE.AnimationAction; idle: THREE.AnimationAction } | null>(null);
   useEffect(() => {
-    const action = mixer.clipAction(clip);
-    action.play();
+    const [run, walk, idle] = clips.map((c) => mixer.clipAction(c));
+    for (const a of [run, walk, idle]) {
+      a.play();
+      a.setEffectiveWeight(0);
+    }
+    run.setEffectiveWeight(1);
+    actions.current = { run, walk, idle };
     return () => {
-      action.stop();
+      for (const a of [run, walk, idle]) a.stop();
+      actions.current = null;
     };
-  }, [mixer, clip]);
+  }, [mixer, clips]);
 
   const root = useRef<THREE.Group>(null);
   const proj = useMemo(() => new THREE.Vector3(), []);
   const tmp = useMemo(() => new THREE.Vector3(), []);
   const tmp2 = useMemo(() => new THREE.Vector3(), []);
 
-  const lastD = useRef(0);
+  /* her smoothed transform: the scroll-driven target is followed with a short lag so the
+     motion stays even whatever the scroll and frame cadences do */
+  const pose = useRef({ x: 0, z: 0, h: 0, speed: 0, init: false });
   useFrame(({ camera, size }, dt) => {
     const st = scene.get();
     const s = storyState(st.mode === "story" ? st.storyP : 1);
-    // where she is along the lap
-    let d: number;
     // in the story she holds still while the X-ray is on, so the bone labels stay put
     const sp = st.storyP;
-    const hold = srange(sp, 0.19, 0.23) * (1 - srange(sp, 0.4, 0.44));
+    const hold = st.mode === "story" ? srange(sp, 0.19, 0.23) * (1 - srange(sp, 0.4, 0.44)) : 0;
+    let d: number, tx: number, tz: number, th: number;
     if (st.mode === "story") {
       const f = sp < 0.21 ? (sp / 0.21) * 0.38 : sp < 0.42 ? 0.38 : 0.38 + ((sp - 0.42) / 0.58) * 0.62;
       d = 34 + (STORY_END_D - 34) * f;
+      const p = pointAt(d);
+      tx = p.x;
+      tz = p.z;
+      th = headingOf(p);
+    } else {
+      const t = tripPose(st.trip, smooth(range(st.q, 0.1, 0.72)));
+      d = t.d;
+      tx = t.x;
+      tz = t.z;
+      th = t.heading;
     }
-    else d = markerD(st.trip - 1) + (markerD(st.trip) - markerD(st.trip - 1)) * smooth(range(st.q, 0.1, 0.7));
-    const dd = Math.min(dt, 0.05);
-    const speed = dd > 0 ? Math.min(Math.abs(d - lastD.current) / dd, 14) : 0;
-    lastD.current = d;
+    const dd = Math.min(dt, 0.1);
+    const ps = pose.current;
+    if (!ps.init) {
+      ps.x = tx;
+      ps.z = tz;
+      ps.h = th;
+      ps.init = true;
+    }
+    const k = 1 - Math.exp(-dd / 0.07);
+    const px = ps.x, pz = ps.z;
+    ps.x += (tx - ps.x) * k;
+    ps.z += (tz - ps.z) * k;
+    let dh = th - ps.h;
+    dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+    ps.h += dh * k;
+    const inst = dd > 0 ? Math.min(Math.hypot(ps.x - px, ps.z - pz) / dd, 14) : 0;
+    ps.speed += (inst - ps.speed) * (1 - Math.exp(-dd / 0.12));
     runnerPose.d = d;
-    runnerPose.speed = speed;
-    const tp = pointAt(d);
-    runnerPose.x = tp.x;
-    runnerPose.z = tp.z;
-    runnerPose.heading = headingOf(tp);
+    runnerPose.x = ps.x;
+    runnerPose.z = ps.z;
+    runnerPose.heading = ps.h;
+    runnerPose.speed = ps.speed;
     if (root.current) {
-      root.current.position.set(tp.x, 0, tp.z);
-      root.current.rotation.y = runnerPose.heading;
+      root.current.position.set(ps.x, 0, ps.z);
+      root.current.rotation.y = ps.h;
       root.current.visible = !s.micro;
     }
     if (s.micro) {
@@ -195,9 +228,29 @@ export default function Runner() {
       return;
     }
 
-    // clip speed follows her ground speed (the mocap run is roughly 3.4 m/s)
-    const timeScale = Math.max(0.85, Math.min(2.4, speed / 3.4 + (st.trip >= SLIDE_COUNT && st.mode === "trip" ? 0.3 : 0)));
-    mixer.update(dd * timeScale * (st.mode === "story" ? 1 - hold : 1));
+    // run / walk / idle blend from her speed (in the story she runs, and settles to a stand for the X-ray)
+    const a = actions.current;
+    if (a) {
+      const v = ps.speed;
+      let wr: number, ww: number, wi: number;
+      if (st.mode === "story") {
+        wi = hold;
+        wr = 1 - hold;
+        ww = 0;
+      } else {
+        wr = srange(v, 1.3, 2.6);
+        wi = 1 - srange(v, 0.08, 0.7);
+        ww = (1 - wi) * (1 - wr);
+      }
+      a.run.setEffectiveWeight(wr);
+      a.walk.setEffectiveWeight(ww);
+      a.idle.setEffectiveWeight(wi);
+      // clip speeds follow her ground speed (the mocap run is roughly 3.4 m/s, the walk 1.3 m/s)
+      const sprint = st.mode === "trip" && st.trip === FINISH_INDEX ? 0.3 : 0;
+      a.run.setEffectiveTimeScale(Math.max(0.85, Math.min(2.3, v / 3.4 + sprint)));
+      a.walk.setEffectiveTimeScale(Math.max(0.7, Math.min(1.8, v / 1.3)));
+    }
+    mixer.update(dd * (1 - hold));
 
     // X-ray crossfade on the skinned body
     const x = st.mode !== "story" || s.finish ? 0 : s.xray;

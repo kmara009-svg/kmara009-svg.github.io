@@ -3,16 +3,16 @@ import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Stage } from "../ui/primitives";
-import { SLIDE_COUNT, scene } from "@/lib/scene";
+import { FINISH_INDEX, scene } from "@/lib/scene";
 import { range } from "@/lib/story";
 
 gsap.registerPlugin(ScrollTrigger);
 
 export const TRIP_VH = 3.2; // each slide section is this many viewport heights tall
 
-/* A slide reached by a "trip": the first part of the section's scroll lifts the camera to a
-   satellite view while the runner moves to the next marker, then dives back to street level,
-   and finally the slide rises over the scene. `index` is the 1-based slide number. */
+/* A slide reached by a "trip": over the section's scroll she runs to the slide's sign and
+   halts in front of it, the camera zooms into the sign, and finally the slide rises over it.
+   `index` is the 1-based slide number. */
 export function Slide({ id, label, index, tone = "paper", stageStyle, children }: { id: string; label: string; index: number; tone?: "paper" | "dark"; stageStyle?: CSSProperties; children: ReactNode }) {
   const section = useRef<HTMLElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
@@ -34,7 +34,7 @@ export function Slide({ id, label, index, tone = "paper", stageStyle, children }
         exit?.kill();
         scene.setTrip(index, q);
         if (wrap.current) {
-          const o = index >= SLIDE_COUNT ? range(q, 0.95, 0.995) : range(q, 0.905, 0.985);
+          const o = index === FINISH_INDEX ? range(q, 0.95, 0.995) : range(q, 0.905, 0.985);
           // the slide is only mounted once the camera is on its sign, so its entrance effects play as it appears
           wrap.current.style.display = q >= 0.88 ? "block" : "none";
           wrap.current.style.opacity = String(o);

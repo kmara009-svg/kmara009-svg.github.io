@@ -10,7 +10,7 @@ import Billboards from "./Billboards";
 import { Dust } from "./Effects";
 import MicroBone, { MICRO_ORIGIN } from "./MicroBone";
 import { story, storyState, srange, range } from "@/lib/story";
-import { SLIDE_COUNT, runnerPose, scene } from "@/lib/scene";
+import { FINISH_INDEX, runnerPose, scene } from "@/lib/scene";
 import { pointAt, relative } from "@/lib/trackPath";
 import { signPose } from "@/lib/signs";
 
@@ -40,7 +40,9 @@ function CameraRig() {
   useFrame((_, dt) => {
     camera.layers.enable(1);
     const st = scene.get();
-    const p = pointAt(runnerPose.d);
+    // her position with the track direction at her distance, so chase views stay steady while she turns
+    const tp = pointAt(runnerPose.d);
+    const p = { x: runnerPose.x, z: runnerPose.z, fx: tp.fx, fz: tp.fz };
     const rel = (v: THREE.Vector3, out: THREE.Vector3) => out.fromArray(relative(p, v.x, v.y, v.z));
     const fog = three.fog as THREE.Fog | null;
     let micro = false;
@@ -80,14 +82,16 @@ function CameraRig() {
         desired.tgt.lerp(a, t2);
       }
     } else {
-      // trip: zoom out of the previous sign, run (chase pulls back a little), arrive at this
-      // slide's sign, then zoom into it; the slide then rises over the zoomed-in sign
+      // trip: zoom out of the previous sign, run (chase pulls back a little), swing onto this
+      // slide's sign while she halts in front of it, then zoom into the sign; the slide then
+      // rises over the zoomed-in sign
       const q = st.q;
       const i = st.trip;
-      const last = i >= SLIDE_COUNT;
+      const last = i === FINISH_INDEX;
+      const prevFinish = i - 1 === FINISH_INDEX;
       const zoomOut = 1 - srange(q, 0.0, 0.1);
-      const pull = Math.min(srange(q, 0.1, 0.3), 1 - srange(q, 0.5, 0.68));
-      const approach = srange(q, 0.68, 0.86);
+      const pull = Math.min(srange(q, 0.1, 0.3), 1 - srange(q, 0.46, 0.64));
+      const approach = srange(q, 0.62, 0.8);
       const zoomIn = srange(q, 0.86, 0.975);
       // chase view with the pull-back
       const w = VIEWS.wide;
@@ -96,12 +100,15 @@ function CameraRig() {
       // sign views (world space)
       const signView = (n: number, zoomed: boolean, pos: THREE.Vector3, tgt: THREE.Vector3) => {
         const sp = signPose(n);
-        const dist = zoomed ? 3.1 : 6.4;
-        pos.set(sp.x + sp.nx * dist, zoomed ? 2.25 : 1.75, sp.z + sp.nz * dist);
+        const dist = zoomed ? 3.1 : 9.5; // the wider view keeps her in frame, standing in front of the sign
+        pos.set(sp.x + sp.nx * dist, zoomed ? 2.25 : 2.4, sp.z + sp.nz * dist);
         tgt.set(sp.x, 2.3, sp.z);
       };
       if (i > 1 && zoomOut > 0) {
-        signView(i - 1, true, a, b);
+        if (prevFinish) {
+          a.fromArray(relative(p, VIEWS.finishClose.pos.x, VIEWS.finishClose.pos.y, VIEWS.finishClose.pos.z));
+          b.fromArray(relative(p, VIEWS.finishClose.tgt.x, VIEWS.finishClose.tgt.y, VIEWS.finishClose.tgt.z));
+        } else signView(i - 1, true, a, b);
         desired.pos.lerp(a, zoomOut);
         desired.tgt.lerp(b, zoomOut);
       }
@@ -203,10 +210,10 @@ export default function StoryCanvas() {
     <CanvasBoundary fallback={<StaticFallback />}>
       <div className="absolute inset-0">
         <Canvas
-          dpr={[1, 1.5]}
-          shadows={{ type: THREE.PCFSoftShadowMap }}
-          camera={{ fov: 34, near: 0.2, far: 3000, position: [0, 1.3, 4.3] }}
-          gl={{ antialias: false, powerPreference: "high-performance", stencil: false, logarithmicDepthBuffer: true }}
+          dpr={[1, 1.25]}
+          shadows={{ type: THREE.PCFShadowMap }}
+          camera={{ fov: 34, near: 0.3, far: 3000, position: [0, 1.3, 4.3] }}
+          gl={{ antialias: false, powerPreference: "high-performance", stencil: false }}
           onCreated={({ gl }) => {
             gl.toneMapping = THREE.ACESFilmicToneMapping;
             gl.toneMappingExposure = 0.8;
