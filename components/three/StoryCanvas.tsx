@@ -21,7 +21,7 @@ const VIEWS = {
   front: { pos: V(-2.4, 1.3, 3.9), tgt: V(0, 0.95, 0) },
   chase: { pos: V(1.7, 2.1, -5.2), tgt: V(0, 1.0, 2.8) },
   finish: { pos: V(-4.0, 1.4, 4.8), tgt: V(0.3, 0.95, -0.3) },
-  satellite: { pos: V(0, 230, -0.4), tgt: V(0, 0, 0.3) },
+  wide: { pos: V(2.6, 2.9, -7.8), tgt: V(0, 1.0, 3.2) }, // pulled back while she runs between slides
 };
 const HAZE = new THREE.Color("#d3dbe6");
 const DARK = new THREE.Color("#141416");
@@ -33,7 +33,6 @@ function CameraRig() {
   const wasMicro = useRef(false);
   const a = useMemo(() => new THREE.Vector3(), []);
   const b = useMemo(() => new THREE.Vector3(), []);
-  const fwd = useMemo(() => new THREE.Vector3(), []);
 
   useFrame((_, dt) => {
     camera.layers.enable(1);
@@ -51,7 +50,7 @@ function CameraRig() {
       micro = s.micro;
       if (micro) {
         const ang = 0.6 + sp * 2.4;
-        const R = 6.4 - 0.7 * s.porosity;
+        const R = 7.8 - 0.6 * s.porosity;
         desired.pos.set(MICRO_ORIGIN.x + Math.cos(ang) * R, MICRO_ORIGIN.y + 0.7 + 0.5 * Math.sin(sp * 9), MICRO_ORIGIN.z + Math.sin(ang) * R);
         desired.tgt.copy(MICRO_ORIGIN);
       } else if (s.finish) {
@@ -78,32 +77,23 @@ function CameraRig() {
         desired.tgt.lerp(a, t2);
       }
     } else {
-      // trip: street → satellite → street (Google-Maps style), then the slide appears
+      // trip: the chase camera pulls back a little while she runs to the next slide's marker
       const q = st.q;
-      const rise = srange(q, 0.0, 0.32);
-      const fall = 1 - srange(q, 0.68, 1.0);
-      const alt = Math.min(rise, fall);
+      const out = srange(q, 0.0, 0.3);
+      const back = 1 - srange(q, 0.7, 1.0);
+      const e = Math.min(out, back);
       const last = st.trip >= SLIDE_COUNT;
       const k = last ? srange(q, 0.6, 0.96) : 0; // final slide lands on the finish-line view
       const street = { pos: a.copy(VIEWS.chase.pos).lerp(VIEWS.finish.pos, k), tgt: b.copy(VIEWS.chase.tgt).lerp(VIEWS.finish.tgt, k) };
-      const sat = VIEWS.satellite;
-      const e = alt * alt * (3 - 2 * alt);
-      const px = street.pos.x + (sat.pos.x - street.pos.x) * e;
-      const py = street.pos.y + (sat.pos.y - street.pos.y) * e;
-      const pz = street.pos.z + (sat.pos.z - street.pos.z) * e;
-      const tx = street.tgt.x + (sat.tgt.x - street.tgt.x) * e;
-      const ty = street.tgt.y + (sat.tgt.y - street.tgt.y) * e;
-      const tz = street.tgt.z + (sat.tgt.z - street.tgt.z) * e;
-      desired.pos.fromArray(relative(p, px, py, pz));
-      desired.tgt.fromArray(relative(p, tx, ty, tz));
-      fwd.set(p.fx, 0, p.fz);
-      desired.up.set(0, 1, 0).lerp(fwd, e).normalize();
+      const w = VIEWS.wide;
+      desired.pos.fromArray(relative(p, street.pos.x + (w.pos.x - street.pos.x) * e, street.pos.y + (w.pos.y - street.pos.y) * e, street.pos.z + (w.pos.z - street.pos.z) * e));
+      desired.tgt.fromArray(relative(p, street.tgt.x + (w.tgt.x - street.tgt.x) * e, street.tgt.y + (w.tgt.y - street.tgt.y) * e, street.tgt.z + (w.tgt.z - street.tgt.z) * e));
     }
 
     if (fog) {
       fog.color.copy(micro ? DARK : HAZE);
-      fog.near = micro ? 3.0 : 260;
-      fog.far = micro ? 10.5 : 1700;
+      fog.near = micro ? 4.0 : 260;
+      fog.far = micro ? 12.5 : 1700;
     }
     if (micro !== wasMicro.current) snap = true;
     wasMicro.current = micro;
