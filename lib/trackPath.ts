@@ -44,3 +44,6 @@ export function relative(p: TrackPoint, x: number, y: number, z: number): [numbe
   // right = forward × up = (-fz, 0, fx)
   return [p.x + p.fx * z - p.fz * x, y, p.z + p.fz * z + p.fx * x];
 }
+
+/* point on lane 1 at a marker distance (alias kept for readability in callers) */
+export const markerPoint = (d: number) => pointAt(d);

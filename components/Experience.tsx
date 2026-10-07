@@ -74,10 +74,11 @@ export default function Experience() {
       const idx = Math.max(0, Math.min(stops.current.length - 1, i));
       animating.current = true;
       const dist = Math.abs(stops.current[idx].y - lenis.scroll) / window.innerHeight;
-      if (duration >= 1.5) duration = Math.min(3.2, 1.1 + 0.85 * dist); // a slide trip (~1.6 screens) takes ~2.5 s
+      const trip = dist > 1.8; // a slide trip is ~2.2 screens: give it ~5.5 s with an ease-in-out so the run never looks rushed
+      if (duration >= 1.5) duration = trip ? Math.min(6.5, 2.2 + 1.5 * dist) : Math.min(3, 1.1 + 0.85 * dist);
       lenis.scrollTo(stops.current[idx].y, {
         duration,
-        easing: (t) => 1 - Math.pow(1 - t, 3),
+        easing: trip ? (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2) : (t) => 1 - Math.pow(1 - t, 3),
         lock: true,
         force: true,
         onComplete: () => {

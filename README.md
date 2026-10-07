@@ -22,7 +22,7 @@ Pushing to `main` deploys to GitHub Pages through `.github/workflows/deploy.yml`
 
 * Every stop is a 1920×1080 stage, scaled to fit the window. Record at 1920×1080 for a 1:1 layout.
 * `→` `↓` `space` `enter` advance, `←` `↑` go back, `Home` / `End` jump. The 3D story has six beats; each slide is one stop.
-* Between slides she runs to the next marker on the oval with the chase camera pulling back a little, then the slide rises over the scene. The final stop is the finish line.
+* Every slide has a billboard beside the track at its marker. Between slides the camera zooms out of the previous sign, follows her run (pulling back a little), swings onto the next sign and zooms into it; the slide then rises over the sign and its entrance animations play. The final stop is the finish line. Keyboard trips take about five seconds with an ease-in-out.
 * Press `P` for presentation mode: fullscreen, cursor hidden, navigation chrome hidden. `Esc` leaves it.
 * The top-right 600×400 px of every stop is kept empty for a webcam overlay. Open `/?qa=1` to see that zone outlined.
 * All text is 28 px or larger at 1920×1080.
@@ -38,6 +38,7 @@ Pushing to `main` deploys to GitHub Pages through `.github/workflows/deploy.yml`
 | `components/three/` | Stadium (oval, stands, crowd, sky, sun), rigged runner + bone-parented X-ray skeleton, dust, marching-cubes bone, camera rig |
 | `lib/trackPath.ts` | The 400 m oval: position and heading at any distance along lane 1 |
 | `lib/scene.ts` | Scene state shared between the scroll triggers and the 3D scene; slide markers along the lap |
+| `lib/signs.ts`, `components/three/Billboards.tsx` | One billboard per slide (canvas-rendered title) and its camera placement |
 | `public/models/` | `runner.glb` (Mixamo "Michelle" character, from the three.js examples) and `run.json` (a Mixamo run clip retargeted onto her rig) |
 | `components/sections/` | One component per slide |
 | `components/charts/` | Risk bars, energy-availability zone bar, interval chart |

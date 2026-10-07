@@ -6,11 +6,13 @@ import { EffectComposer, Bloom, SMAA } from "@react-three/postprocessing";
 import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Runner from "./Runner";
 import Stadium from "./Stadium";
+import Billboards from "./Billboards";
 import { Dust } from "./Effects";
 import MicroBone, { MICRO_ORIGIN } from "./MicroBone";
 import { story, storyState, srange, range } from "@/lib/story";
 import { SLIDE_COUNT, runnerPose, scene } from "@/lib/scene";
 import { pointAt, relative } from "@/lib/trackPath";
+import { signPose } from "@/lib/signs";
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 /* runner-relative camera views: x to her right, y up, z ahead */
@@ -21,6 +23,7 @@ const VIEWS = {
   front: { pos: V(-2.4, 1.3, 3.9), tgt: V(0, 0.95, 0) },
   chase: { pos: V(1.7, 2.1, -5.2), tgt: V(0, 1.0, 2.8) },
   finish: { pos: V(-4.0, 1.4, 4.8), tgt: V(0.3, 0.95, -0.3) },
+  finishClose: { pos: V(-2.6, 1.15, 3.2), tgt: V(0.2, 0.95, -0.2) },
   wide: { pos: V(2.6, 2.9, -7.8), tgt: V(0, 1.0, 3.2) }, // pulled back while she runs between slides
 };
 const HAZE = new THREE.Color("#d3dbe6");
@@ -77,17 +80,50 @@ function CameraRig() {
         desired.tgt.lerp(a, t2);
       }
     } else {
-      // trip: the chase camera pulls back a little while she runs to the next slide's marker
+      // trip: zoom out of the previous sign, run (chase pulls back a little), arrive at this
+      // slide's sign, then zoom into it; the slide then rises over the zoomed-in sign
       const q = st.q;
-      const out = srange(q, 0.0, 0.3);
-      const back = 1 - srange(q, 0.7, 1.0);
-      const e = Math.min(out, back);
-      const last = st.trip >= SLIDE_COUNT;
-      const k = last ? srange(q, 0.6, 0.96) : 0; // final slide lands on the finish-line view
-      const street = { pos: a.copy(VIEWS.chase.pos).lerp(VIEWS.finish.pos, k), tgt: b.copy(VIEWS.chase.tgt).lerp(VIEWS.finish.tgt, k) };
+      const i = st.trip;
+      const last = i >= SLIDE_COUNT;
+      const zoomOut = 1 - srange(q, 0.0, 0.14);
+      const pull = Math.min(srange(q, 0.14, 0.34), 1 - srange(q, 0.5, 0.68));
+      const approach = srange(q, 0.68, 0.86);
+      const zoomIn = srange(q, 0.86, 0.975);
+      // chase view with the pull-back
       const w = VIEWS.wide;
-      desired.pos.fromArray(relative(p, street.pos.x + (w.pos.x - street.pos.x) * e, street.pos.y + (w.pos.y - street.pos.y) * e, street.pos.z + (w.pos.z - street.pos.z) * e));
-      desired.tgt.fromArray(relative(p, street.tgt.x + (w.tgt.x - street.tgt.x) * e, street.tgt.y + (w.tgt.y - street.tgt.y) * e, street.tgt.z + (w.tgt.z - street.tgt.z) * e));
+      desired.pos.fromArray(relative(p, VIEWS.chase.pos.x + (w.pos.x - VIEWS.chase.pos.x) * pull, VIEWS.chase.pos.y + (w.pos.y - VIEWS.chase.pos.y) * pull, VIEWS.chase.pos.z + (w.pos.z - VIEWS.chase.pos.z) * pull));
+      desired.tgt.fromArray(relative(p, VIEWS.chase.tgt.x + (w.tgt.x - VIEWS.chase.tgt.x) * pull, VIEWS.chase.tgt.y + (w.tgt.y - VIEWS.chase.tgt.y) * pull, VIEWS.chase.tgt.z + (w.tgt.z - VIEWS.chase.tgt.z) * pull));
+      // sign views (world space)
+      const signView = (n: number, zoomed: boolean, pos: THREE.Vector3, tgt: THREE.Vector3) => {
+        const sp = signPose(n);
+        const dist = zoomed ? 3.1 : 6.4;
+        pos.set(sp.x + sp.nx * dist, zoomed ? 2.25 : 1.75, sp.z + sp.nz * dist);
+        tgt.set(sp.x, 2.3, sp.z);
+      };
+      if (i > 1 && zoomOut > 0) {
+        signView(i - 1, true, a, b);
+        desired.pos.lerp(a, zoomOut);
+        desired.tgt.lerp(b, zoomOut);
+      }
+      if (approach > 0) {
+        if (last) {
+          a.fromArray(relative(p, VIEWS.finish.pos.x, VIEWS.finish.pos.y, VIEWS.finish.pos.z));
+          b.fromArray(relative(p, VIEWS.finish.tgt.x, VIEWS.finish.tgt.y, VIEWS.finish.tgt.z));
+          desired.pos.lerp(a, approach);
+          desired.tgt.lerp(b, approach);
+          a.fromArray(relative(p, VIEWS.finishClose.pos.x, VIEWS.finishClose.pos.y, VIEWS.finishClose.pos.z));
+          b.fromArray(relative(p, VIEWS.finishClose.tgt.x, VIEWS.finishClose.tgt.y, VIEWS.finishClose.tgt.z));
+          desired.pos.lerp(a, zoomIn);
+          desired.tgt.lerp(b, zoomIn);
+        } else {
+          signView(i, false, a, b);
+          desired.pos.lerp(a, approach);
+          desired.tgt.lerp(b, approach);
+          signView(i, true, a, b);
+          desired.pos.lerp(a, zoomIn);
+          desired.tgt.lerp(b, zoomIn);
+        }
+      }
     }
 
     if (fog) {
@@ -98,7 +134,7 @@ function CameraRig() {
     if (micro !== wasMicro.current) snap = true;
     wasMicro.current = micro;
 
-    const k = snap ? 1 : 1 - Math.pow(0.0002, Math.min(dt, 0.25));
+    const k = snap ? 1 : 1 - Math.pow(0.012, Math.min(dt, 0.25)); // gentle follow, so camera moves never look rushed
     camera.position.lerp(desired.pos, k);
     lookAt.current.lerp(desired.tgt, k);
     camera.up.lerp(desired.up, k).normalize();
@@ -185,6 +221,7 @@ export default function StoryCanvas() {
               <Lightformer intensity={0.5} color="#7f8a66" position={[0, -10, 0]} rotation-x={-Math.PI / 2} scale={[100, 100, 1]} />
             </Environment>
             <Stadium />
+            <Billboards />
             <Dust />
             <Runner />
             <MicroBone />
