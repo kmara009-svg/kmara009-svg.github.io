@@ -10,7 +10,7 @@ import Billboards from "./Billboards";
 import { Dust } from "./Effects";
 import MicroBone, { MICRO_ORIGIN } from "./MicroBone";
 import { story, storyState, srange, range } from "@/lib/story";
-import { FINISH_INDEX, SLIDE_COUNT, runnerPose, scene } from "@/lib/scene";
+import { FINISH_INDEX, SLIDE_COUNT, left, runnerPose, scene } from "@/lib/scene";
 import { pointAt, relative } from "@/lib/trackPath";
 import { signPose } from "@/lib/signs";
 
@@ -91,7 +91,9 @@ function CameraRig() {
       const i = st.trip;
       const last = i === FINISH_INDEX;
       const prevFinish = i - 1 === FINISH_INDEX;
-      const zoomOut = 1 - srange(q, 0.0, 0.1);
+      // pull out of the previous sign: by scroll, but never slower than a timed move that starts the moment the slide is left
+      let zoomOut = 1 - srange(q, 0.0, 0.1);
+      if (left.index === i - 1) zoomOut = Math.min(zoomOut, 1 - srange((performance.now() - left.at) / 1000, 0.05, 0.8));
       // she halts at q 0.66 while the camera is still behind her, then it swings onto the sign
       const pull = Math.min(srange(q, 0.1, 0.3), 1 - srange(q, 0.48, 0.64));
       const approach = srange(q, 0.66, 0.84);

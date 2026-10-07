@@ -46,6 +46,7 @@ export function Slide({ id, label, index, tone = "paper", stageStyle, children }
     const hide = (fast = false) => {
       if (!shown) return;
       shown = false;
+      if (!fast) scene.leave(index);
       tween?.kill();
       const o = { t: 1 };
       w.style.pointerEvents = "none";

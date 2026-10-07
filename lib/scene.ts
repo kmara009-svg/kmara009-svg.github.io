@@ -17,8 +17,14 @@ export type SceneState = {
 };
 
 const state: SceneState = { mode: "story", storyP: 0, trip: 1, q: 0 };
+/* the slide most recently left and when: the camera pulls out of its sign in real time from then */
+export const left = { index: -1, at: 0 };
 export const scene = {
   get: () => state,
+  leave(index: number) {
+    left.index = index;
+    left.at = performance.now();
+  },
   setStory(p: number) {
     state.mode = "story";
     state.storyP = p;
