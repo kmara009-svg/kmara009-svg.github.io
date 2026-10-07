@@ -1,10 +1,13 @@
 /* Shared scene state written by the scroll triggers and read by the 3D scene each frame. */
 import { TRACK_LENGTH } from "./trackPath";
 
-export const SLIDE_COUNT = 25; // content slides after the story; the last one is the finish line
+export const FINISH_INDEX = 20; // the finish-line slide: she crosses the line one lap after the story
+export const SLIDE_COUNT = 21; // slides after the story; the last one (references) sits just past the finish line
 export const STORY_END_D = 56; // metres covered during the pinned story
-export const markerD = (i: number) => (i >= SLIDE_COUNT ? TRACK_LENGTH : STORY_END_D + (i * (TRACK_LENGTH - STORY_END_D)) / SLIDE_COUNT);
-/* slide i (1-based) is viewed at markerD(i); the story runs from 0 to markerD(0) */
+export const REFERENCES_D = TRACK_LENGTH + 22; // the references sign, a short jog on from the finish line (on the infield side, clear of the story views)
+export const markerD = (i: number) =>
+  i >= SLIDE_COUNT ? REFERENCES_D : i >= FINISH_INDEX ? TRACK_LENGTH : STORY_END_D + (i * (TRACK_LENGTH - STORY_END_D)) / FINISH_INDEX;
+/* slide i (1-based) has its sign at markerD(i); the story runs from 0 to markerD(0) */
 
 export type SceneState = {
   mode: "story" | "trip";

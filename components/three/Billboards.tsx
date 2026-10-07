@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { useMemo } from "react";
 import { SIGNS, signPose } from "@/lib/signs";
-import { SLIDE_COUNT } from "@/lib/scene";
+import { FINISH_INDEX, SLIDE_COUNT } from "@/lib/scene";
 
 /* one 16:9 board per slide, rendered from a canvas: eyebrow, title and slide number */
 function signTexture(eyebrow: string, title: string, index: number) {
@@ -69,7 +69,7 @@ function signTexture(eyebrow: string, title: string, index: number) {
 export default function Billboards() {
   const items = useMemo(
     () =>
-      SIGNS.filter((s) => s.index < SLIDE_COUNT).map((s) => ({ ...s, pose: signPose(s.index), tex: signTexture(s.eyebrow, s.title, s.index) })),
+      SIGNS.filter((s) => s.index !== FINISH_INDEX).map((s) => ({ ...s, pose: signPose(s.index), tex: signTexture(s.eyebrow, s.title, s.index) })),
     []
   );
   const post = useMemo(() => new THREE.MeshStandardMaterial({ color: "#2b2c2f", roughness: 0.6, metalness: 0.4 }), []);
