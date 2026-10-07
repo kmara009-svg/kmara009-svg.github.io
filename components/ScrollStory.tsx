@@ -38,7 +38,7 @@ export default function ScrollStory() {
     });
     const unsub = story.subscribe((p) => {
       const s = storyState(p);
-      const heroO = 1 - srange(p, 0.04, 0.12);
+      const heroO = 1 - srange(p, 0.07, 0.15);
       if (heroBlock.current) {
         heroBlock.current.style.opacity = String(heroO);
         heroBlock.current.style.transform = `translateY(${-50 * (1 - heroO)}px)`;

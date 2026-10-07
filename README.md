@@ -22,6 +22,7 @@ Pushing to `main` deploys to GitHub Pages through `.github/workflows/deploy.yml`
 
 * Every stop is a 1920×1080 stage, scaled to fit the window. Record at 1920×1080 for a 1:1 layout.
 * `→` `↓` `space` `enter` advance, `←` `↑` go back, `Home` / `End` jump. The 3D story has six beats; each slide is one stop.
+* The story opens on a bird's-eye view of the whole oval with the titles, then descends onto her running before the X-ray.
 * Every slide has a billboard beside the track at its marker. Between slides the camera zooms out of the previous sign, follows her run (pulling back a little) until she halts in her lane just before the next sign (run, walk and idle clips blend by her speed), then swings onto the sign and zooms into it; the slide fades in over it with its entrance animations, and leaves in a quick timed beat the moment you move on. She crosses the finish line for the closing slide, then jogs on to a last sign for the references, shown all at once. Keyboard trips take about five seconds with an ease-in-out.
 * Press `P` for presentation mode: fullscreen, cursor hidden, navigation chrome hidden. `Esc` leaves it.
 * The top-right 600×400 px of every stop is kept empty for a webcam overlay. Open `/?qa=1` to see that zone outlined.
