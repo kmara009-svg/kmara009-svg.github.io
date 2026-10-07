@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Lenis from "lenis";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import dynamic from "next/dynamic";
 import ScrollStory from "./ScrollStory";
 import ProgressTrack from "./ProgressTrack";
 import { BEATS } from "@/lib/story";
@@ -12,6 +13,8 @@ import { ProgramSections } from "./sections/Program";
 import { ClosingSections } from "./sections/Closing";
 
 gsap.registerPlugin(ScrollTrigger);
+
+const StoryCanvas = dynamic(() => import("./three/StoryCanvas"), { ssr: false });
 
 type Stop = { id: string; label: string; y: number };
 
@@ -45,7 +48,8 @@ export default function Experience() {
       BEATS.forEach((b) => list.push({ id: `story-${b.id}`, label: "Refuel. Rebuild. Return.", y: top + dist * b.p }));
     }
     document.querySelectorAll<HTMLElement>("section.slide").forEach((el, i) => {
-      list.push({ id: el.id || `slide-${i}`, label: el.dataset.label || "", y: el.offsetTop });
+      // a trip section's stop is its end, where the slide has fully risen over the scene
+      list.push({ id: el.id || `slide-${i}`, label: el.dataset.label || "", y: el.offsetTop + el.offsetHeight - vh });
     });
     stops.current = list;
   }, []);
@@ -69,6 +73,8 @@ export default function Experience() {
       if (!lenis || !stops.current.length) return;
       const idx = Math.max(0, Math.min(stops.current.length - 1, i));
       animating.current = true;
+      const dist = Math.abs(stops.current[idx].y - lenis.scroll) / window.innerHeight;
+      if (duration >= 1.5) duration = Math.min(3.2, 1.1 + 0.85 * dist); // a slide trip (~1.6 screens) takes ~2.5 s
       lenis.scrollTo(stops.current[idx].y, {
         duration,
         easing: (t) => 1 - Math.pow(1 - t, 3),
@@ -87,6 +93,7 @@ export default function Experience() {
     const lenis = new Lenis({ lerp: 0.09, wheelMultiplier: 0.9, smoothWheel: true });
     lenisRef.current = lenis;
     let snapTimer: number | undefined;
+    const noSnap = new URLSearchParams(window.location.search).get("nosnap") === "1";
     lenis.on("scroll", (e: Lenis) => {
       ScrollTrigger.update();
       setProgress(e.limit > 0 ? e.scroll / e.limit : 0);
@@ -94,7 +101,7 @@ export default function Experience() {
       setCurrent(idx);
       window.clearTimeout(snapTimer);
       snapTimer = window.setTimeout(() => {
-        if (animating.current) return;
+        if (animating.current || noSnap) return;
         const target = stops.current[nearest(lenis.scroll)];
         if (target && Math.abs(target.y - lenis.scroll) > 3) goTo(nearest(lenis.scroll), 0.8);
       }, 260);
@@ -190,12 +197,17 @@ export default function Experience() {
   const label = stops.current[current]?.label ?? "";
 
   return (
-    <main>
+    <main className="relative">
+      <div className="fixed inset-0 z-0 bg-ink">
+        <StoryCanvas />
+      </div>
+      <div className="relative z-10">
       <ScrollStory />
       <IntroSections />
       <CareSections />
       <ProgramSections />
       <ClosingSections />
+      </div>
 
       {/* chrome: hidden in presentation mode. Nothing is ever placed top-right. */}
       <div className="chrome fixed left-6 top-5 z-40 flex items-center gap-4 text-paper mix-blend-difference" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.08em" }}>

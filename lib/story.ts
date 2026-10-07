@@ -27,7 +27,7 @@ export const BEATS = [
   { id: "micro-dense", p: 0.47 },
   { id: "micro-porous", p: 0.6 },
   { id: "redensify", p: 0.82 },
-  { id: "finish", p: 1 },
+  { id: "return", p: 1 },
 ] as const;
 
 export const STORY_VH = 8; // story section height in viewport heights

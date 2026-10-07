@@ -9,7 +9,7 @@ const TONE_TEXT: Record<string, string> = { green: "#1b7f4c", red: "#c8102e", te
 
 export function DayOne() {
   return (
-    <Slide id="day-one" label="Day 1: my first response">
+    <Slide id="day-one" index={7} label="Day 1: my first response">
       <Header eyebrow={dayOne.eyebrow} title={dayOne.title} />
       {/* timeline connector */}
       <Box x={96} y={518} w={1728} h={6}>
@@ -63,7 +63,7 @@ export function DayOne() {
 
 export function InjuryReport() {
   return (
-    <Slide id="injury-report" label="The injury report">
+    <Slide id="injury-report" index={8} label="The injury report">
       <Header eyebrow={injuryReport.eyebrow} title={injuryReport.title} />
       <Box x={96} y={320} w={520} h={614}>
         <motion.div {...reveal} className="h-full w-full bg-white" style={{ boxShadow: "0 24px 60px rgba(30,30,30,0.18)", border: "2px solid #e2e2dc" }}>
@@ -89,7 +89,7 @@ export function InjuryReport() {
 
 export function StartNow() {
   return (
-    <Slide id="start-now" label="Start now, avoid for now">
+    <Slide id="start-now" index={9} label="Start now, avoid for now">
       <Header eyebrow={startNow.eyebrow} title={startNow.title} />
       {startNow.columns.map((c, i) => (
         <Box key={c.title} x={96 + i * 592} y={420} w={544} h={450}>
@@ -115,7 +115,7 @@ export function StartNow() {
 
 export function Risk() {
   return (
-    <Slide id="risk" label="Risk stacks up">
+    <Slide id="risk" index={10} label="Risk stacks up">
       <Header eyebrow={risk.eyebrow} title={risk.title} />
       <Box x={96} y={320} w={1224}>
         <motion.div {...reveal} className="font-bold" style={{ fontSize: 32 }}>
@@ -155,7 +155,7 @@ export function Risk() {
 
 export function Prevention() {
   return (
-    <Slide id="prevention" label="Removing the risks">
+    <Slide id="prevention" index={11} label="Removing the risks">
       <Header eyebrow={prevention.eyebrow} title={prevention.title} />
       <Box x={96} y={420}>
         <Table head={prevention.head} rows={prevention.rows} widths={[420, 860, 448]} rowH={76} />

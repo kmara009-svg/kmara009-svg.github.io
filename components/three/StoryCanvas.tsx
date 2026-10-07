@@ -1,79 +1,120 @@
 "use client";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { ContactShadows, Environment, Lightformer } from "@react-three/drei";
-import { Suspense } from "react";
+import { Environment, Lightformer } from "@react-three/drei";
 import { EffectComposer, Bloom, SMAA } from "@react-three/postprocessing";
-import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Runner from "./Runner";
-import Track, { Dust } from "./Track";
+import Stadium from "./Stadium";
+import { Dust } from "./Effects";
 import MicroBone, { MICRO_ORIGIN } from "./MicroBone";
-import { story, storyState, srange } from "@/lib/story";
+import { story, storyState, srange, range } from "@/lib/story";
+import { SLIDE_COUNT, runnerPose, scene } from "@/lib/scene";
+import { pointAt, relative } from "@/lib/trackPath";
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
-const KEY = {
-  hero: { pos: V(1.9, 1.3, 4.3), tgt: V(-0.5, 0.95, 0) },
-  xray: { pos: V(1.4, 1.1, 2.6), tgt: V(0, 0.92, 0) },
+/* runner-relative camera views: x to her right, y up, z ahead */
+const VIEWS = {
+  hero: { pos: V(-2.5, 1.1, 3.7), tgt: V(0.7, 0.95, 0) },
+  xray: { pos: V(-1.4, 1.1, 2.6), tgt: V(0, 0.92, 0) },
   dive: { pos: V(0.32, 0.98, 0.5), tgt: V(-0.07, 0.92, 0) },
-  // finish: over her shoulder, the line comes towards her
-  finishA: { pos: V(-3.0, 2.1, -5.0), tgt: V(0.3, 0.9, 2.2) },
-  finishB: { pos: V(-2.4, 1.7, -4.0), tgt: V(0.2, 0.9, 1.8) },
+  front: { pos: V(-2.4, 1.3, 3.9), tgt: V(0, 0.95, 0) },
+  chase: { pos: V(1.7, 2.1, -5.2), tgt: V(0, 1.0, 2.8) },
+  finish: { pos: V(-4.0, 1.4, 4.8), tgt: V(0.3, 0.95, -0.3) },
+  satellite: { pos: V(0, 230, -0.4), tgt: V(0, 0, 0.3) },
 };
+const HAZE = new THREE.Color("#d3dbe6");
+const DARK = new THREE.Color("#141416");
 
 function CameraRig() {
-  const { camera, scene } = useThree();
-  const desired = useMemo(() => ({ pos: KEY.hero.pos.clone(), tgt: KEY.hero.tgt.clone() }), []);
-  const lookAt = useRef(KEY.hero.tgt.clone());
+  const { camera, scene: three } = useThree();
+  const desired = useMemo(() => ({ pos: new THREE.Vector3(), tgt: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0) }), []);
+  const lookAt = useRef(new THREE.Vector3());
   const wasMicro = useRef(false);
-  const tmp = useMemo(() => new THREE.Vector3(), []);
+  const a = useMemo(() => new THREE.Vector3(), []);
+  const b = useMemo(() => new THREE.Vector3(), []);
+  const fwd = useMemo(() => new THREE.Vector3(), []);
 
   useFrame((_, dt) => {
     camera.layers.enable(1);
-    const p = story.get();
-    const s = storyState(p);
+    const st = scene.get();
+    const p = pointAt(runnerPose.d);
+    const rel = (v: THREE.Vector3, out: THREE.Vector3) => out.fromArray(relative(p, v.x, v.y, v.z));
+    const fog = three.fog as THREE.Fog | null;
+    let micro = false;
     let snap = false;
-    const fog = scene.fog as THREE.Fog | null;
-    if (fog) {
-      fog.near = s.micro ? 3.0 : 9;
-      fog.far = s.micro ? 10.5 : 34;
-    }
-    if (s.micro) {
-      const a = 0.6 + p * 2.4;
-      const R = 6.4 - 0.7 * s.porosity;
-      desired.pos.set(MICRO_ORIGIN.x + Math.cos(a) * R, MICRO_ORIGIN.y + 0.7 + 0.5 * Math.sin(p * 9), MICRO_ORIGIN.z + Math.sin(a) * R);
-      desired.tgt.copy(MICRO_ORIGIN);
-      if (!wasMicro.current) snap = true;
-    } else if (s.finish) {
-      desired.pos.lerpVectors(KEY.finishA.pos, KEY.finishB.pos, s.finishLine);
-      desired.tgt.lerpVectors(KEY.finishA.tgt, KEY.finishB.tgt, s.finishLine);
-      if (wasMicro.current) snap = true;
+    desired.up.set(0, 1, 0);
+
+    if (st.mode === "story") {
+      const sp = st.storyP;
+      const s = storyState(sp);
+      micro = s.micro;
+      if (micro) {
+        const ang = 0.6 + sp * 2.4;
+        const R = 6.4 - 0.7 * s.porosity;
+        desired.pos.set(MICRO_ORIGIN.x + Math.cos(ang) * R, MICRO_ORIGIN.y + 0.7 + 0.5 * Math.sin(sp * 9), MICRO_ORIGIN.z + Math.sin(ang) * R);
+        desired.tgt.copy(MICRO_ORIGIN);
+      } else if (s.finish) {
+        // back in colour: swing from a front view round to the chase view used between slides
+        const t = srange(sp, 0.865, 1);
+        rel(VIEWS.front.pos, a);
+        rel(VIEWS.chase.pos, b);
+        desired.pos.lerpVectors(a, b, t);
+        rel(VIEWS.front.tgt, a);
+        rel(VIEWS.chase.tgt, b);
+        desired.tgt.lerpVectors(a, b, t);
+      } else {
+        const t1 = srange(sp, 0.1, 0.28);
+        const t2 = s.dive;
+        rel(VIEWS.hero.pos, a);
+        rel(VIEWS.xray.pos, b);
+        desired.pos.lerpVectors(a, b, t1);
+        rel(VIEWS.dive.pos, a);
+        desired.pos.lerp(a, t2);
+        rel(VIEWS.hero.tgt, a);
+        rel(VIEWS.xray.tgt, b);
+        desired.tgt.lerpVectors(a, b, t1);
+        rel(VIEWS.dive.tgt, a);
+        desired.tgt.lerp(a, t2);
+      }
     } else {
-      const t1 = srange(p, 0.1, 0.28);
-      const t2 = s.dive;
-      desired.pos.lerpVectors(KEY.hero.pos, KEY.xray.pos, t1).lerp(KEY.dive.pos, t2);
-      desired.tgt.lerpVectors(KEY.hero.tgt, KEY.xray.tgt, t1).lerp(KEY.dive.tgt, t2);
-      if (wasMicro.current) snap = true;
+      // trip: street → satellite → street (Google-Maps style), then the slide appears
+      const q = st.q;
+      const rise = srange(q, 0.0, 0.32);
+      const fall = 1 - srange(q, 0.68, 1.0);
+      const alt = Math.min(rise, fall);
+      const last = st.trip >= SLIDE_COUNT;
+      const k = last ? srange(q, 0.6, 0.96) : 0; // final slide lands on the finish-line view
+      const street = { pos: a.copy(VIEWS.chase.pos).lerp(VIEWS.finish.pos, k), tgt: b.copy(VIEWS.chase.tgt).lerp(VIEWS.finish.tgt, k) };
+      const sat = VIEWS.satellite;
+      const e = alt * alt * (3 - 2 * alt);
+      const px = street.pos.x + (sat.pos.x - street.pos.x) * e;
+      const py = street.pos.y + (sat.pos.y - street.pos.y) * e;
+      const pz = street.pos.z + (sat.pos.z - street.pos.z) * e;
+      const tx = street.tgt.x + (sat.tgt.x - street.tgt.x) * e;
+      const ty = street.tgt.y + (sat.tgt.y - street.tgt.y) * e;
+      const tz = street.tgt.z + (sat.tgt.z - street.tgt.z) * e;
+      desired.pos.fromArray(relative(p, px, py, pz));
+      desired.tgt.fromArray(relative(p, tx, ty, tz));
+      fwd.set(p.fx, 0, p.fz);
+      desired.up.set(0, 1, 0).lerp(fwd, e).normalize();
     }
-    wasMicro.current = s.micro;
-    const k = snap ? 1 : 1 - Math.pow(0.0005, Math.min(dt, 0.05));
+
+    if (fog) {
+      fog.color.copy(micro ? DARK : HAZE);
+      fog.near = micro ? 3.0 : 260;
+      fog.far = micro ? 10.5 : 1700;
+    }
+    if (micro !== wasMicro.current) snap = true;
+    wasMicro.current = micro;
+
+    const k = snap ? 1 : 1 - Math.pow(0.0002, Math.min(dt, 0.25));
     camera.position.lerp(desired.pos, k);
     lookAt.current.lerp(desired.tgt, k);
-    camera.lookAt(tmp.copy(lookAt.current));
+    camera.up.lerp(desired.up, k).normalize();
+    camera.lookAt(lookAt.current);
   });
   return null;
-}
-
-function Lights() {
-  return (
-    <>
-      <hemisphereLight args={["#dfe9ff", "#3a1b14", 0.55]} />
-      <directionalLight position={[3, 6, 4]} intensity={2.6} color="#fff3df" />
-      <directionalLight position={[-4, 3, -5]} intensity={2.4} color="#c6f432" />
-      <pointLight position={[-2, 0.4, 2.5]} intensity={6} color="#c6f432" distance={8} />
-      <pointLight position={[0, 6, -14]} intensity={60} color="#ffffff" distance={40} />
-      <pointLight position={[8, 7, -6]} intensity={40} color="#dcefff" distance={40} />
-    </>
-  );
 }
 
 class CanvasBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
@@ -95,7 +136,7 @@ function webglOK() {
   }
 }
 
-/* Static-image fallback: crossfades pre-rendered frames by scroll progress. */
+/* Static-image fallback: crossfades pre-rendered frames by story progress. */
 export function StaticFallback() {
   const refs = useRef<(HTMLImageElement | null)[]>([]);
   useEffect(
@@ -127,7 +168,7 @@ export function StaticFallback() {
   );
 }
 
-export default function StoryCanvas({ active }: { active: boolean }) {
+export default function StoryCanvas() {
   const [ok, setOk] = useState<boolean | null>(null);
   useEffect(() => setOk(webglOK()), []);
   if (ok === null) return <div className="absolute inset-0 bg-ink" />;
@@ -137,34 +178,30 @@ export default function StoryCanvas({ active }: { active: boolean }) {
       <div className="absolute inset-0">
         <Canvas
           dpr={[1, 1.5]}
-          frameloop={active ? "always" : "never"}
-          camera={{ fov: 34, near: 0.05, far: 120, position: [1.9, 1.3, 4.3] }}
-          gl={{ antialias: false, powerPreference: "high-performance", stencil: false }}
+          shadows={{ type: THREE.PCFSoftShadowMap }}
+          camera={{ fov: 34, near: 0.2, far: 3000, position: [0, 1.3, 4.3] }}
+          gl={{ antialias: false, powerPreference: "high-performance", stencil: false, logarithmicDepthBuffer: true }}
           onCreated={({ gl }) => {
             gl.toneMapping = THREE.ACESFilmicToneMapping;
-            gl.toneMappingExposure = 1.05;
+            gl.toneMappingExposure = 0.8;
           }}
         >
-          <color attach="background" args={["#141416"]} />
-          <fog attach="fog" args={["#141416", 9, 34]} />
-          <Lights />
+          <fog attach="fog" args={["#d3dbe6", 260, 1700]} />
           <CameraRig />
           <Suspense fallback={null}>
-            <Environment resolution={256} frames={1}>
-              <Lightformer intensity={2.2} color="#fff4e4" position={[0, 6, -9]} scale={[12, 10, 1]} />
-              <Lightformer intensity={1.4} color="#c6f432" position={[-6, 2, 1]} rotation-y={Math.PI / 2} scale={[10, 2.5, 1]} />
-              <Lightformer intensity={1.1} color="#a8d4ff" position={[7, 3, 2]} rotation-y={-Math.PI / 2} scale={[8, 2.5, 1]} />
-              <Lightformer intensity={0.5} color="#ffffff" position={[0, -2, 0]} rotation-x={Math.PI / 2} scale={[12, 12, 1]} />
+            <Environment resolution={128} frames={1}>
+              <Lightformer intensity={1.6} color="#dfeaff" position={[0, 40, 0]} rotation-x={Math.PI / 2} scale={[100, 100, 1]} />
+              <Lightformer intensity={3} color="#fff1d6" position={[30, 40, -40]} scale={[18, 18, 1]} />
+              <Lightformer intensity={0.5} color="#7f8a66" position={[0, -10, 0]} rotation-x={-Math.PI / 2} scale={[100, 100, 1]} />
             </Environment>
-            <Track />
+            <Stadium />
             <Dust />
             <Runner />
-            <ContactShadows position={[0, 0.004, 0]} opacity={0.6} scale={5} blur={2.4} far={1.8} resolution={256} color="#2a0d08" />
             <MicroBone />
           </Suspense>
           <EffectComposer multisampling={0}>
             <SMAA />
-            <Bloom intensity={0.75} luminanceThreshold={0.62} luminanceSmoothing={0.25} mipmapBlur />
+            <Bloom intensity={0.45} luminanceThreshold={0.9} luminanceSmoothing={0.2} mipmapBlur />
           </EffectComposer>
         </Canvas>
       </div>

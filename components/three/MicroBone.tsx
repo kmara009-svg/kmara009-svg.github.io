@@ -5,7 +5,7 @@ import { useMemo, useRef } from "react";
 import { MarchingCubes } from "three/examples/jsm/objects/MarchingCubes.js";
 import { story, storyState } from "@/lib/story";
 
-export const MICRO_ORIGIN = new THREE.Vector3(0, -80, 0);
+export const MICRO_ORIGIN = new THREE.Vector3(0, -400, 0);
 
 /* Trabecular bone as an organic isosurface: a warped gyroid (the classic model for the
    plate-and-rod architecture of cancellous bone) polygonised with marching cubes.
@@ -106,6 +106,11 @@ export default function MicroBone() {
   return (
     <group ref={group} position={MICRO_ORIGIN} visible={false}>
       <primitive object={mc} />
+      {/* dark shell so the sky never shows behind the bone */}
+      <mesh>
+        <sphereGeometry args={[60, 16, 12]} />
+        <meshBasicMaterial color="#141416" side={THREE.BackSide} fog={false} />
+      </mesh>
       <pointLight position={[4, 3.5, 4]} intensity={12} color="#fff2dc" distance={20} decay={2} />
       <pointLight position={[-4.5, -1, 3.5]} intensity={6} color="#c6f432" distance={20} decay={2} />
       <pointLight position={[0, 4, -4.5]} intensity={4} color="#9fd0ff" distance={20} decay={2} />
