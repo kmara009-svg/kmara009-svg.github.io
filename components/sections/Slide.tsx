@@ -17,6 +17,13 @@ export function Slide({ id, label, index, tone = "paper", stageStyle, children }
   const section = useRef<HTMLElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    let exit: gsap.core.Tween | undefined;
+    const setOut = (t: number) => {
+      if (!wrap.current) return;
+      wrap.current.style.opacity = String(1 - t);
+      wrap.current.style.transform = `translateY(${-40 * t}px) scale(${1 - 0.03 * t})`;
+      wrap.current.style.pointerEvents = "none";
+    };
     const st = ScrollTrigger.create({
       trigger: section.current,
       start: "top top",
@@ -24,6 +31,7 @@ export function Slide({ id, label, index, tone = "paper", stageStyle, children }
       scrub: true,
       onUpdate: (self) => {
         const q = self.progress;
+        exit?.kill();
         scene.setTrip(index, q);
         if (wrap.current) {
           const o = index >= SLIDE_COUNT ? range(q, 0.95, 0.995) : range(q, 0.905, 0.985);
@@ -35,7 +43,27 @@ export function Slide({ id, label, index, tone = "paper", stageStyle, children }
         }
       },
     });
-    return () => st.kill();
+    // leaving the slide: instead of letting it crawl off with the scroll, fade it out in a quick timed beat
+    const leave = ScrollTrigger.create({
+      trigger: section.current,
+      start: "bottom bottom-=8", // a few px past the stop, so sitting on the slide never counts as leaving it
+      end: "bottom top",
+      onEnter: () => {
+        exit?.kill();
+        const o = { t: 0 };
+        exit = gsap.to(o, { t: 1, duration: 0.35, ease: "power2.in", onUpdate: () => setOut(o.t) });
+      },
+      onLeaveBack: () => {
+        exit?.kill();
+        setOut(0);
+        if (wrap.current) wrap.current.style.pointerEvents = "auto";
+      },
+    });
+    return () => {
+      exit?.kill();
+      leave.kill();
+      st.kill();
+    };
   }, [index]);
   return (
     <section id={id} ref={section} data-label={label} data-index={index} className="slide trip" style={{ height: `${TRIP_VH * 100}vh` }}>

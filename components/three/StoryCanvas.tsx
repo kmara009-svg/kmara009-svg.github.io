@@ -85,8 +85,8 @@ function CameraRig() {
       const q = st.q;
       const i = st.trip;
       const last = i >= SLIDE_COUNT;
-      const zoomOut = 1 - srange(q, 0.0, 0.14);
-      const pull = Math.min(srange(q, 0.14, 0.34), 1 - srange(q, 0.5, 0.68));
+      const zoomOut = 1 - srange(q, 0.0, 0.1);
+      const pull = Math.min(srange(q, 0.1, 0.3), 1 - srange(q, 0.5, 0.68));
       const approach = srange(q, 0.68, 0.86);
       const zoomIn = srange(q, 0.86, 0.975);
       // chase view with the pull-back
