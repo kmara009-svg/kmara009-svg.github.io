@@ -1,13 +1,13 @@
-/* Where she runs between slides: she leaves the spot in front of the previous sign, merges onto
-   lane 1, runs to the next marker and veers off the track to stop in front of that sign, turning
-   to face it as she comes to a halt. The finish-line slide is the exception: she stays on lane 1
-   and stops on the line. */
+/* Where she runs between slides: she stays in lane 1 and halts just before each sign's marker
+   while the camera zooms into the sign. The finish-line slide stops her on the line, and for
+   the last (references) sign she veers off the track to stand in front of it, turning to face
+   it as she comes to a halt. */
 import { TRACK_LENGTH, pointAt } from "./trackPath";
-import { FINISH_INDEX, STORY_END_D, markerD } from "./scene";
+import { FINISH_INDEX, SLIDE_COUNT, STORY_END_D, markerD } from "./scene";
 import { SIGN_LAT, signPose, signSide } from "./signs";
 import { clamp01, smooth, srange } from "./story";
 
-export const STOP_BACK = 2.6; // she halts this far before the sign's marker, along the track
+export const STOP_BACK = 3.0; // she halts this far before the sign's marker, along the track
 export const STOP_LAT = SIGN_LAT - 1.7; // and 1.7 m in front of the sign face
 const LEAVE_M = 10; // metres over which she merges back onto lane 1
 const ARRIVE_M = 16; // metres over which she veers out to the sign
@@ -17,7 +17,7 @@ export type Stop = { d: number; lat: number };
 export function stopFor(i: number): Stop {
   if (i <= 0) return { d: STORY_END_D, lat: 0 };
   if (i === FINISH_INDEX) return { d: TRACK_LENGTH, lat: 0 };
-  return { d: markerD(i) - STOP_BACK, lat: STOP_LAT * signSide(i) };
+  return { d: markerD(i) - STOP_BACK, lat: i >= SLIDE_COUNT ? STOP_LAT * signSide(i) : 0 };
 }
 
 /* world position at distance d along lane 1, offset lat metres to her right */

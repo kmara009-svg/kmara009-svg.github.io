@@ -439,7 +439,7 @@ export function Sun() {
         intensity={2.4}
         color="#fff4e0"
         castShadow
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={[1536, 1536]}
         shadow-bias={-0.0004}
         shadow-normalBias={0.03}
         shadow-camera-near={10}

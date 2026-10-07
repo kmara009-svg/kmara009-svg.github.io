@@ -187,7 +187,7 @@ export default function Runner() {
       tz = p.z;
       th = headingOf(p);
     } else {
-      const t = tripPose(st.trip, smooth(range(st.q, 0.1, 0.72)));
+      const t = tripPose(st.trip, smooth(range(st.q, 0.1, 0.66)));
       d = t.d;
       tx = t.x;
       tz = t.z;
@@ -247,7 +247,7 @@ export default function Runner() {
       a.idle.setEffectiveWeight(wi);
       // clip speeds follow her ground speed (the mocap run is roughly 3.4 m/s, the walk 1.3 m/s)
       const sprint = st.mode === "trip" && st.trip === FINISH_INDEX ? 0.3 : 0;
-      a.run.setEffectiveTimeScale(Math.max(0.85, Math.min(2.3, v / 3.4 + sprint)));
+      a.run.setEffectiveTimeScale(Math.max(0.85, Math.min(1.9, v / 3.4 + sprint)));
       a.walk.setEffectiveTimeScale(Math.max(0.7, Math.min(1.8, v / 1.3)));
     }
     mixer.update(dd * (1 - hold));
