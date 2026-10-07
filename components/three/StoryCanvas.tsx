@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, Lightformer } from "@react-three/drei";
-import { EffectComposer, Bloom, SMAA } from "@react-three/postprocessing";
+import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Runner from "./Runner";
 import Stadium from "./Stadium";
@@ -26,6 +26,8 @@ const VIEWS = {
   finishClose: { pos: V(-2.6, 1.15, 3.2), tgt: V(0.2, 0.95, -0.2) },
   wide: { pos: V(2.6, 2.9, -7.8), tgt: V(0, 1.0, 3.2) }, // pulled back while she runs between slides
 };
+/* opening view: high over the home straight, the whole oval in frame to the right of the titles */
+const AERIAL = { pos: V(-20, 185, 120), tgt: V(0, 0, -8) };
 const HAZE = new THREE.Color("#d3dbe6");
 const DARK = new THREE.Color("#141416");
 
@@ -39,6 +41,13 @@ function CameraRig() {
 
   useFrame((_, dt) => {
     camera.layers.enable(1);
+    // a further near plane while high over the stadium keeps depth precise enough that the track and infield never flicker
+    const cam = camera as THREE.PerspectiveCamera;
+    const near = cam.position.y > 25 ? 1.2 : 0.3;
+    if (cam.near !== near) {
+      cam.near = near;
+      cam.updateProjectionMatrix();
+    }
     const st = scene.get();
     // her position with the track direction at her distance, so chase views stay steady while she turns
     const tp = pointAt(runnerPose.d);
@@ -70,16 +79,20 @@ function CameraRig() {
         rel(VIEWS.chase.tgt, b);
         desired.tgt.lerpVectors(a, b, t);
       } else {
-        const t1 = srange(sp, 0.1, 0.28);
+        // bird's eye over the whole track with the titles, descending onto her as they fade, then the X-ray
+        const t0 = srange(sp, 0.06, 0.18);
+        const t1 = srange(sp, 0.18, 0.28);
         const t2 = s.dive;
         rel(VIEWS.hero.pos, a);
+        desired.pos.copy(AERIAL.pos).lerp(a, t0);
         rel(VIEWS.xray.pos, b);
-        desired.pos.lerpVectors(a, b, t1);
+        desired.pos.lerp(b, t1);
         rel(VIEWS.dive.pos, a);
         desired.pos.lerp(a, t2);
         rel(VIEWS.hero.tgt, a);
+        desired.tgt.copy(AERIAL.tgt).lerp(a, t0);
         rel(VIEWS.xray.tgt, b);
-        desired.tgt.lerpVectors(a, b, t1);
+        desired.tgt.lerp(b, t1);
         rel(VIEWS.dive.tgt, a);
         desired.tgt.lerp(a, t2);
       }
@@ -93,7 +106,7 @@ function CameraRig() {
       const prevFinish = i - 1 === FINISH_INDEX;
       // pull out of the previous sign: by scroll, but never slower than a timed move that starts the moment the slide is left
       let zoomOut = 1 - srange(q, 0.0, 0.1);
-      if (left.index === i - 1) zoomOut = Math.min(zoomOut, 1 - srange((performance.now() - left.at) / 1000, 0.05, 0.8));
+      if (left.index === i - 1) zoomOut = Math.min(zoomOut, 1 - srange((performance.now() - left.at) / 1000, 0.0, 0.65));
       // she halts at q 0.66 while the camera is still behind her, then it swings onto the sign
       const pull = Math.min(srange(q, 0.1, 0.3), 1 - srange(q, 0.48, 0.64));
       const approach = srange(q, 0.66, 0.84);
@@ -239,8 +252,7 @@ export default function StoryCanvas() {
             <Runner />
             <MicroBone />
           </Suspense>
-          <EffectComposer multisampling={0}>
-            <SMAA />
+          <EffectComposer multisampling={2}>
             <Bloom intensity={0.45} luminanceThreshold={0.9} luminanceSmoothing={0.2} mipmapBlur />
           </EffectComposer>
         </Canvas>

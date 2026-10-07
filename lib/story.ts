@@ -44,7 +44,7 @@ export const bump = (p: number, c: number, w: number) => {
 
 /* Derived values the 3D scene and overlays both use */
 export function storyState(p: number) {
-  const xray = srange(p, 0.13, 0.27);
+  const xray = srange(p, 0.19, 0.28);
   const labels = srange(p, 0.24, 0.3) * (1 - srange(p, 0.32, 0.37));
   const dive = srange(p, 0.31, 0.43);
   const flash = bump(p, 0.43, 0.04) + bump(p, 0.865, 0.04);

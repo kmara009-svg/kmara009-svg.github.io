@@ -52,7 +52,7 @@ export function Slide({ id, label, index, tone = "paper", stageStyle, children }
       w.style.pointerEvents = "none";
       tween = gsap.to(o, {
         t: 0,
-        duration: fast ? 0.25 : 0.35,
+        duration: fast ? 0.22 : 0.3,
         ease: "power2.in",
         onUpdate: () => {
           w.style.opacity = String(o.t);

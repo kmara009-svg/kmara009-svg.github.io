@@ -177,10 +177,10 @@ export default function Runner() {
     const s = storyState(st.mode === "story" ? st.storyP : 1);
     // in the story she holds still while the X-ray is on, so the bone labels stay put
     const sp = st.storyP;
-    const hold = st.mode === "story" ? srange(sp, 0.19, 0.23) * (1 - srange(sp, 0.4, 0.44)) : 0;
+    const hold = st.mode === "story" ? srange(sp, 0.21, 0.25) * (1 - srange(sp, 0.4, 0.44)) : 0;
     let d: number, tx: number, tz: number, th: number;
     if (st.mode === "story") {
-      const f = sp < 0.21 ? (sp / 0.21) * 0.38 : sp < 0.42 ? 0.38 : 0.38 + ((sp - 0.42) / 0.58) * 0.62;
+      const f = sp < 0.23 ? (sp / 0.23) * 0.38 : sp < 0.42 ? 0.38 : 0.38 + ((sp - 0.42) / 0.58) * 0.62;
       d = 34 + (STORY_END_D - 34) * f;
       const p = pointAt(d);
       tx = p.x;

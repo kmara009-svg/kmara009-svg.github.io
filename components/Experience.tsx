@@ -78,11 +78,11 @@ export default function Experience() {
       if (idx > cur) document.dispatchEvent(new CustomEvent(LEAVE_EVENT, { detail: { id: stops.current[cur].id } }));
       animating.current = true;
       const dist = Math.abs(stops.current[idx].y - lenis.scroll) / window.innerHeight;
-      const trip = dist > 1.8; // a slide trip is ~2.2 screens: ~6.5 s with a sine ease-in-out, which keeps her run unhurried
-      if (duration >= 1.5) duration = trip ? Math.min(7.5, 2.8 + 1.7 * dist) : Math.min(3, 1.1 + 0.85 * dist);
+      const trip = dist > 1.8; // a slide trip is ~2.2 screens: ~5.5 s, moving from the first frame so a key press answers at once
+      if (duration >= 1.5) duration = trip ? Math.min(6.5, 2.4 + 1.4 * dist) : Math.min(3, 1.1 + 0.85 * dist);
       lenis.scrollTo(stops.current[idx].y, {
         duration,
-        easing: trip ? (t) => 0.5 - 0.5 * Math.cos(Math.PI * t) : (t) => 1 - Math.pow(1 - t, 3),
+        easing: trip ? (t) => 0.3 * t + 0.7 * (0.5 - 0.5 * Math.cos(Math.PI * t)) : (t) => 1 - Math.pow(1 - t, 3),
         lock: true,
         force: true,
         onComplete: () => {
