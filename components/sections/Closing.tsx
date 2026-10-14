@@ -4,12 +4,13 @@ import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Slide } from "./Slide";
 import { Box, Header } from "../ui/primitives";
 import { closing, references } from "@/lib/content";
-import { FINISH_INDEX, SLIDE_COUNT } from "@/lib/scene";
+import { FINISH_INDEX, SLIDE_COUNT } from "@/lib/deck";
+import { XRAY_CREDITS } from "@/lib/xray";
 
 export function ClosingAsks() {
   return (
     <Slide id="closing" index={FINISH_INDEX} label="Fuel first. Load smart." tone="dark" stageStyle={{ background: "transparent" }}>
-      {/* the finish line: the live 3D scene stays visible behind a dark gradient */}
+      {/* the finish line: the closing footage stays visible behind a dark gradient */}
       <div className="absolute inset-0" style={{ background: "linear-gradient(90deg, rgba(20,20,22,0.9) 0%, rgba(20,20,22,0.72) 48%, rgba(20,20,22,0.12) 72%, rgba(20,20,22,0) 100%)" }} />
       <div className="absolute lime-stripes" style={{ left: 0, top: 0, width: 36, height: 1080, opacity: 0.9 }} />
       {closing.lines.map((l, i) => (
@@ -37,14 +38,31 @@ export function ClosingAsks() {
 
 /* Every reference on one slide after the finish line: three columns, the third starting below
    the webcam zone, balanced by height, at the largest text size (down from 28 px) at which all
-   of them fit. The photo credit sits at the foot of the first column. */
+   of them fit. The photo, footage and X-ray credits follow the references. */
 const COLS = [
   { x: 96, y: 236, w: 560, h: 812 },
   { x: 688, y: 236, w: 560, h: 812 },
   { x: 1280, y: 428, w: 544, h: 576 },
 ];
-const ITEMS: { text: string; muted?: boolean }[] = references.flatMap((r) => r.items).map((text) => ({ text }));
-const NOTE = references.map((r) => r.note).find(Boolean);
+/* X-rays grouped by author and licence: "pelvis by A, CC BY-SA 3.0 (note); ankle and foot by B, CC0" */
+const xrayCredit = Object.values(
+  XRAY_CREDITS.reduce<Record<string, { what: string[]; author: string; licence: string; note?: string }>>((acc, c) => {
+    const k = `${c.author}|${c.licence}`;
+    (acc[k] ??= { what: [], author: c.author, licence: c.licence, note: c.note }).what.push(c.what);
+    return acc;
+  }, {})
+)
+  .map((g) => `${g.what.join(" and ")} by ${g.author}, ${g.licence}${g.note ? ` (${g.note})` : ""}`)
+  .join("; ");
+const CREDITS = [
+  ...references.map((r) => r.note).filter((n): n is string => !!n),
+  "Video: Mixkit, used under the Mixkit Stock Video Free License.",
+  `X-rays via Wikimedia Commons: ${xrayCredit}.`,
+];
+const ITEMS: { text: string; muted?: boolean }[] = [
+  ...references.flatMap((r) => r.items).map((text) => ({ text })),
+  ...CREDITS.map((text) => ({ text, muted: true })),
+];
 const refStyle = (size: number, muted?: boolean): CSSProperties => ({ fontSize: size, lineHeight: 1.22, marginBottom: Math.round(size * 0.6), paddingLeft: muted ? 0 : 36, textIndent: muted ? 0 : -36, wordBreak: "break-word" });
 
 /* assign items to columns in order so each column fills in proportion to its height */
@@ -120,13 +138,6 @@ export function References() {
             )}
           </Box>
         ))}
-        {NOTE ? (
-          <Box x={96} y={1004} w={1100}>
-            <p className="m-0 text-mute" style={{ fontSize: Math.max(layout.size, 18) }}>
-              {NOTE}
-            </p>
-          </Box>
-        ) : null}
       </Slide>
     </>
   );
