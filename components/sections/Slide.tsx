@@ -1,90 +1,110 @@
 "use client";
 import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Stage } from "../ui/primitives";
-import { LEAVE_S, REVEAL_S, deck, registerSlideLabel, stopOfSlide } from "@/lib/deck";
+import { FINISH_INDEX, scene } from "@/lib/scene";
 
-/* One slide of the deck. Every slide stays mounted but parked off screen (so revealing one never
-   stalls a frame, and its in-view entrance animations replay each time it is shown). The deck
-   reveals it as its arrival footage ends and dismisses it the moment the presenter moves on.
-   `index` is the 1-based slide number. */
+gsap.registerPlugin(ScrollTrigger);
+
+export const TRIP_VH = 3.2; // each slide section is this many viewport heights tall
+export const LEAVE_EVENT = "stage:leave"; // dispatched by the navigation the moment a slide is left
+
+/* A slide reached by a "trip": over the section's scroll she runs to the slide's sign, the camera
+   zooms into the sign, and the slide appears over it. Every slide stays mounted but parked off
+   screen (so showing one never stalls a frame); it is revealed and dismissed with short timed
+   tweens rather than scrubbed by the scroll, which keeps both ends crisp. `index` is the 1-based
+   slide number. */
 export function Slide({ id, label, index, tone = "paper", stageStyle, children }: { id: string; label: string; index: number; tone?: "paper" | "dark"; stageStyle?: CSSProperties; children: ReactNode }) {
-  registerSlideLabel(index, label);
+  const section = useRef<HTMLElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const w = wrap.current;
     if (!w) return;
-    const me = stopOfSlide(index);
     let tween: gsap.core.Tween | undefined;
     let shown = false;
     const park = () => {
       w.style.visibility = "hidden";
-      w.style.transform = "translate3d(0, 150vh, 0)";
+      w.style.transform = "translateY(150vh)";
       w.style.opacity = "0";
       w.style.pointerEvents = "none";
       w.style.willChange = "auto";
     };
-    const show = (fast: boolean) => {
+    const show = () => {
       if (shown) return;
       shown = true;
       tween?.kill();
       const o = { t: 0 };
-      w.style.willChange = "opacity, transform"; // composited while it fades
+      w.style.willChange = "opacity, transform"; // composited on the GPU while it fades, so the page never repaints it per frame
       w.style.visibility = "visible";
       const apply = () => {
         w.style.opacity = String(o.t);
-        w.style.transform = `translate3d(0, ${(1 - o.t) * 36}px, 0) scale(${0.98 + 0.02 * o.t})`;
+        w.style.transform = `translateY(${(1 - o.t) * 48}px) scale(${0.97 + 0.03 * o.t})`;
+        w.style.pointerEvents = o.t > 0.5 ? "auto" : "none";
       };
       apply();
-      tween = gsap.to(o, {
-        t: 1,
-        duration: fast ? 0.22 : REVEAL_S,
-        ease: "power2.out",
-        onUpdate: apply,
-        onComplete: () => {
-          w.style.pointerEvents = "auto";
-          w.style.willChange = "auto";
-        },
-      });
+      tween = gsap.to(o, { t: 1, duration: 0.5, ease: "power3.out", onUpdate: apply });
     };
-    const hide = (fast: boolean) => {
+    const hide = (fast = false) => {
       if (!shown) return;
       shown = false;
+      if (!fast) scene.leave(index);
       tween?.kill();
       const o = { t: 1 };
       w.style.pointerEvents = "none";
       w.style.willChange = "opacity, transform";
       tween = gsap.to(o, {
         t: 0,
-        duration: fast ? 0.18 : LEAVE_S,
+        duration: fast ? 0.22 : 0.28,
         ease: "power1.in",
         onUpdate: () => {
           w.style.opacity = String(o.t);
-          w.style.transform = `translate3d(0, ${-28 * (1 - o.t)}px, 0) scale(${1 - 0.02 * (1 - o.t)})`;
+          w.style.transform = `translateY(${-40 * (1 - o.t)}px) scale(${1 - 0.03 * (1 - o.t)})`;
         },
         onComplete: park,
       });
     };
     park();
-    if (deck.index === me && !deck.move) show(true);
-    const offMove = deck.subscribe((m) => {
-      if (m.from === me || (shown && m.to !== me)) hide(m.instant);
+    const at = index === FINISH_INDEX ? 0.94 : 0.9; // the camera is on the sign by here
+    const st = ScrollTrigger.create({
+      trigger: section.current,
+      start: "top top",
+      end: "bottom bottom",
+      scrub: true,
+      onUpdate: (self) => {
+        const q = self.progress;
+        scene.setTrip(index, q);
+        if (q >= at) show();
+        else hide(true);
+      },
     });
-    const offReveal = deck.onReveal((i, instant) => {
-      if (i === me) show(instant);
+    // leaving the slide forwards: fade it out in a quick beat (a few px past the stop, so sitting on the slide never counts as leaving it)
+    const leave = ScrollTrigger.create({
+      trigger: section.current,
+      start: "bottom bottom-=8",
+      end: "bottom top",
+      onEnter: () => hide(),
+      onLeaveBack: () => show(),
     });
+    const onLeave = (e: Event) => {
+      if ((e as CustomEvent<{ id: string }>).detail?.id === id) hide();
+    };
+    document.addEventListener(LEAVE_EVENT, onLeave);
     return () => {
       tween?.kill();
-      offMove();
-      offReveal();
+      leave.kill();
+      st.kill();
+      document.removeEventListener(LEAVE_EVENT, onLeave);
     };
-  }, [index]);
+  }, [id, index]);
   return (
-    <section id={id} data-label={label} data-index={index} className="deck-slide">
-      <div ref={wrap} className="absolute inset-0" style={{ opacity: 0, visibility: "hidden", transform: "translate3d(0, 150vh, 0)", transformOrigin: "50% 60%" }}>
-        <Stage tone={tone} style={stageStyle}>
-          {children}
-        </Stage>
+    <section id={id} ref={section} data-label={label} data-index={index} className="slide trip" style={{ height: `${TRIP_VH * 100}vh` }}>
+      <div className="sticky top-0 h-screen overflow-hidden">
+        <div ref={wrap} className="absolute inset-0" style={{ opacity: 0, visibility: "hidden", transform: "translateY(150vh)", transformOrigin: "50% 60%" }}>
+          <Stage tone={tone} style={stageStyle}>
+            {children}
+          </Stage>
+        </div>
       </div>
     </section>
   );
