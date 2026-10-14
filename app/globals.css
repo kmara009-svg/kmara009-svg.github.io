@@ -161,13 +161,15 @@ html.presenting .chrome {
   white-space: nowrap;
   color: #f7f7f4;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 14px;
   pointer-events: none;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7);
 }
 .xray-label .dot {
   width: 18px;
   height: 18px;
+  margin-top: 6px;
   border-radius: 999px;
   background: #c6f432;
   box-shadow: 0 0 24px #c6f432;

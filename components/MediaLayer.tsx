@@ -15,7 +15,7 @@ type Resting = { key: string; xray: boolean };
 function resting(i: number): Resting {
   const s = STOPS[i];
   if (!s) return { key: "", xray: false };
-  if (s.beat === "hero") return { key: "v:aerial", xray: false };
+  if (s.beat === "hero") return { key: "v:dawn", xray: false };
   if (s.beat === "xray-hip" || s.beat === "xray-limb") return { key: "s:run-hero", xray: true };
   if (s.beat) return { key: "", xray: false }; // bone beats: the story layer covers the screen
   return { key: s.clip ? `s:${s.clip}` : "", xray: false };
@@ -63,7 +63,7 @@ export default function MediaLayer() {
     };
     /* fetch clips in presentation order, the ones needed next first */
     const order = Array.from(new Set(STOPS.map((s) => s.clip).filter(Boolean) as string[]));
-    const warmed = new Set<string>(["aerial"]);
+    const warmed = new Set<string>(["dawn"]);
     const warm = (id: string) => {
       const v = vids.current[id];
       if (!v || warmed.has(id)) return;
@@ -97,11 +97,11 @@ export default function MediaLayer() {
     const r = resting(deck.index);
     show(r.key, 0);
     xray(r.xray, 0);
-    if (r.key === "v:aerial") play("aerial", false);
+    if (r.key === "v:dawn") play("dawn", false);
     warmAround(deck.index);
-    const aerial = vids.current.aerial;
+    const hero = vids.current.dawn;
     const startWarm = () => window.setTimeout(warmAll, 400);
-    if (aerial && aerial.readyState < 4) aerial.addEventListener("canplaythrough", startWarm, { once: true });
+    if (hero && hero.readyState < 4) hero.addEventListener("canplaythrough", startWarm, { once: true });
     else startWarm();
 
     const offMove = deck.subscribe((m) => {
@@ -112,7 +112,7 @@ export default function MediaLayer() {
       } else {
         const rr = resting(m.to);
         xray(rr.xray, 0.35);
-        if (rr.key === "v:aerial") play("aerial", false);
+        if (rr.key === "v:dawn") play("dawn", false);
         show(rr.key, 0.35);
       }
       warmAround(m.to);
@@ -123,7 +123,7 @@ export default function MediaLayer() {
     // a clip cut short by the presenter: rest on its last frame instead of freezing mid-stride
     const offSettle = deck.onSettle((i) => {
       const key = visible.current;
-      if (!key.startsWith("v:") || key === "v:aerial") return;
+      if (!key.startsWith("v:") || key === "v:dawn") return;
       const v = vids.current[key.slice(2)];
       if (v && !v.ended && v.duration && v.currentTime < v.duration - 0.2) {
         v.pause();
@@ -153,6 +153,7 @@ export default function MediaLayer() {
                 src={c.end}
                 alt=""
                 decoding="async"
+                fetchPriority="low"
                 className="absolute inset-0 h-full w-full object-cover"
                 style={{ opacity: 0 }}
               />
@@ -166,7 +167,7 @@ export default function MediaLayer() {
               muted
               playsInline
               loop={!!c.loop}
-              preload={c.id === "aerial" ? "auto" : "none"}
+              preload={c.loop ? "auto" : "none"}
               className="absolute inset-0 h-full w-full object-cover"
               style={{ opacity: 0 }}
             />

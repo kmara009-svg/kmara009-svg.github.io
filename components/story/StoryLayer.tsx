@@ -24,6 +24,17 @@ function fade(on: boolean, seconds: number, delay = 0): CSSProperties {
   };
 }
 
+/* the film's edges dissolve into the dark instead of ending in a hard rectangle */
+const FILM_EDGE = "linear-gradient(to right, transparent, #000 11%, #000 89%, transparent), linear-gradient(to bottom, transparent, #000 13%, #000 87%, transparent)";
+const FILM: CSSProperties = {
+  WebkitMaskImage: FILM_EDGE,
+  maskImage: FILM_EDGE,
+  WebkitMaskComposite: "source-in",
+  maskComposite: "intersect",
+  filter: "sepia(0.28) hue-rotate(172deg) saturate(1.5) brightness(1.04) drop-shadow(0 0 36px rgba(110, 170, 255, 0.22))",
+};
+const LABEL_W = 440;
+
 function Radiographs({ items, on, t }: { items: Radiograph[]; on: boolean; t: number }) {
   return (
     <div style={fade(on, t)}>
@@ -31,21 +42,24 @@ function Radiographs({ items, on, t }: { items: Radiograph[]; on: boolean; t: nu
         <div key={r.src}>
           <Box x={r.x} y={r.y} w={r.w} h={r.h}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={r.src} alt={r.alt} className="h-full w-full object-contain" style={{ filter: "drop-shadow(0 0 40px rgba(110,170,255,0.25))" }} />
+            <img src={r.src} alt={r.alt} decoding="async" className="h-full w-full object-contain" style={FILM} />
           </Box>
           {r.markers.map((m, i) => {
             const mx = r.x + m.fx * r.w, my = r.y + m.fy * r.h;
+            const left = m.align === "left";
             return (
               <div key={m.id}>
                 <svg className="pointer-events-none absolute left-0 top-0" width={1920} height={1080} style={{ overflow: "visible" }}>
-                  <line x1={mx} y1={my} x2={m.lx + (m.align === "left" ? -14 : 14)} y2={m.ly} stroke="#c6f432" strokeWidth={2} strokeOpacity={0.75} />
+                  <line x1={mx} y1={my} x2={m.lx + (left ? -12 : 12)} y2={m.ly} stroke="#c6f432" strokeWidth={2} strokeOpacity={0.8} />
                 </svg>
                 <div className="xray-ring" style={{ left: mx - 34, top: my - 34, animationDelay: `${i * 0.4}s` }} />
-                <Box x={m.align === "left" ? m.lx : m.lx - 760} y={m.ly - 24} w={760}>
-                  <div className="xray-label" style={{ justifyContent: m.align === "left" ? "flex-start" : "flex-end", flexDirection: m.align === "left" ? "row" : "row-reverse" }}>
+                <Box x={left ? m.lx : m.lx - LABEL_W} y={m.ly - 17} w={LABEL_W}>
+                  <div className="xray-label" style={{ flexDirection: left ? "row" : "row-reverse", textAlign: left ? "left" : "right" }}>
                     <span className="dot" />
-                    <span className="name">{m.name}</span>
-                    <span className="type">{m.type}</span>
+                    <span className="flex flex-col" style={{ gap: 6 }}>
+                      <span className="name">{m.name}</span>
+                      <span className="type">{m.type}</span>
+                    </span>
                   </div>
                 </Box>
               </div>

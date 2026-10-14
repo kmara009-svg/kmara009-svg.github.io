@@ -1,7 +1,8 @@
 // Downloads the free stock clips listed in scripts/media-sources.json (Mixkit, Mixkit Stock Video
 // Free License: no watermark, no attribution required), trims each to its segment and encodes it
-// for instant, smooth playback: 1920x1080 30 fps H.264, a keyframe every 0.5 s, no audio,
-// fast-start. Also writes each clip's first and last frame as JPEG (poster / resting frame) and
+// for instant, smooth playback: 1920x1080 H.264 at the source's own frame rate (no 24→30 judder),
+// a keyframe every 0.5 s, no audio, fast-start. A looping clip gets a 1 s crossfade from its end
+// into its start so the loop has no visible seam. Also writes each clip's first and last frame as JPEG (poster / resting frame) and
 // regenerates lib/media.ts with the real durations.
 //   node scripts/encode-media.mjs            (needs ffmpeg and network access to assets.mixkit.co)
 import { execFileSync } from "node:child_process";
@@ -28,22 +29,26 @@ for (const s of sources.clips) {
   }
   const dst = path.join(out, `${s.id}.mp4`);
   const len = s.out - s.in;
+  const XF = 1; // loop crossfade, seconds
   const filters = [
     s.reverse ? "reverse" : null,
     s.hflip ? "hflip" : null,
     s.speed ? `setpts=PTS/${s.speed}` : null,
     "scale=1920:1080:force_original_aspect_ratio=increase",
     "crop=1920:1080",
-    "fps=30",
     s.grade ?? "eq=contrast=1.04:saturation=1.06",
     s.loop ? null : "tpad=stop_mode=clone:stop_duration=0.1",
   ].filter(Boolean).join(",");
   console.log("encode", s.id, `${s.in}s → ${s.out}s`);
-  run("ffmpeg", ["-y", "-v", "error", "-ss", String(s.in), "-t", String(len), "-i", src, "-vf", filters, "-an",
+  // a loop plays [in+XF, out] with its last XF seconds dissolving into [in, in+XF], so end meets start
+  const graph = s.loop
+    ? ["-filter_complex", `[0:v]${filters},split[a][b];[a]trim=start=${XF},setpts=PTS-STARTPTS[body];[b]trim=end=${XF},setpts=PTS-STARTPTS[head];[body][head]xfade=transition=fade:duration=${XF}:offset=${len - 2 * XF}[v]`, "-map", "[v]"]
+    : ["-vf", filters];
+  run("ffmpeg", ["-y", "-v", "error", "-ss", String(s.in), "-t", String(len), "-i", src, ...graph, "-an",
     "-c:v", "libx264", "-preset", "slow", "-crf", String(s.crf ?? 22), "-profile:v", "high", "-pix_fmt", "yuv420p",
-    "-g", "15", "-keyint_min", "15", "-sc_threshold", "0", "-movflags", "+faststart", dst]);
-  run("ffmpeg", ["-y", "-v", "error", "-i", dst, "-frames:v", "1", "-q:v", "3", path.join(out, `${s.id}-first.jpg`)]);
-  run("ffmpeg", ["-y", "-v", "error", "-sseof", "-0.08", "-i", dst, "-frames:v", "1", "-update", "1", "-q:v", "3", path.join(out, `${s.id}-end.jpg`)]);
+    "-force_key_frames", "expr:gte(t,n_forced*0.5)", "-sc_threshold", "0", "-movflags", "+faststart", dst]);
+  run("ffmpeg", ["-y", "-v", "error", "-i", dst, "-frames:v", "1", "-q:v", "5", path.join(out, `${s.id}-first.jpg`)]);
+  run("ffmpeg", ["-y", "-v", "error", "-sseof", "-0.08", "-i", dst, "-frames:v", "1", "-update", "1", "-q:v", "5", path.join(out, `${s.id}-end.jpg`)]);
   const duration = Math.round(probe(dst) * 100) / 100;
   clips.push({ id: s.id, duration, loop: !!s.loop });
   console.log("  ", duration, "s", Math.round(fs.statSync(dst).size / 1024), "KB");

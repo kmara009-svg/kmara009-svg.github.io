@@ -27,14 +27,30 @@ const STORY: Stop[] = [
   { id: "rebuild", label: "Refuel. Rebuild. Return.", beat: "rebuild" },
 ];
 
-/* arrival clip for each slide (1-based); consecutive slides use different footage */
+/* arrival clip for each slide (1-based), matched to the slide's subject; consecutive slides
+   always use different footage */
 const SLIDE_CLIPS: Record<number, string> = {
-  1: "back-to-colour",
-  2: "t-a", 3: "t-b", 4: "t-c", 5: "t-d", 6: "t-e",
-  7: "t-f", 8: "t-a", 9: "t-b", 10: "t-c", 11: "t-d",
-  12: "t-e", 13: "t-f", 14: "t-a", 15: "t-b", 16: "t-c", 17: "t-d", 18: "t-e", 19: "t-f",
-  20: "finish",
-  21: "cooldown",
+  1: "back-to-colour", // Shantha at a glance
+  2: "fruit", // energy availability
+  3: "stride", // where the skeleton pays
+  4: "lanes", // empty tank, fragile bone
+  5: "drill", // normal vs RED-S
+  6: "watch", // signs & severity
+  7: "greens", // day 1: first response
+  8: "lanes", // the injury report
+  9: "bowl", // start now, avoid for now
+  10: "away", // risk stacks up
+  11: "salad", // removing the risks
+  12: "fruit", // what she must rebuild
+  13: "watch", // monitoring dashboard
+  14: "lanes", // data drives decisions
+  15: "barbell", // strength in three phases
+  16: "bike", // session · week 6
+  17: "stride", // today's aerobic session
+  18: "away", // criteria, not calendar
+  19: "lanes", // evidence & its limits
+  20: "finish", // fuel first. load smart.
+  21: "cooldown", // references
 };
 
 /* slide labels are registered by the slides themselves (components/sections) */
