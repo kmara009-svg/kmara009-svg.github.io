@@ -29,8 +29,7 @@ html {
   scroll-behavior: auto;
 }
 
-html.lenis,
-html.lenis body {
+body {
   height: auto;
 }
 .lenis.lenis-smooth {
@@ -40,10 +39,15 @@ html.lenis body {
   overflow: hidden;
 }
 
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
 body {
   margin: 0;
   background: #1e1e1e;
-  overflow-x: hidden;
 }
 
 /* ---------- Presentation mode ---------- */
@@ -56,11 +60,13 @@ html.presenting .chrome {
 }
 
 /* ---------- 1920x1080 stage ---------- */
-.slide {
-  position: relative;
-  height: 100vh;
-  overflow: visible;
-  background: transparent;
+/* each slide is a fixed full-screen layer; the deck shows one at a time */
+.deck-slide {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  overflow: hidden;
 }
 .stage {
   position: absolute;
@@ -148,7 +154,7 @@ html.presenting .chrome {
   pointer-events: none;
 }
 
-/* x-ray labels rendered by drei <Html> */
+/* labels and pulsing rings on the radiographs */
 .xray-label {
   font-size: 28px;
   line-height: 1.1;
@@ -179,6 +185,27 @@ html.presenting .chrome {
 
 canvas {
   display: block;
+}
+
+.xray-ring {
+  position: absolute;
+  width: 68px;
+  height: 68px;
+  border-radius: 999px;
+  border: 3px solid #c6f432;
+  box-shadow: 0 0 28px rgba(198, 244, 50, 0.65), inset 0 0 18px rgba(198, 244, 50, 0.35);
+  animation: xray-pulse 1.8s ease-in-out infinite;
+}
+@keyframes xray-pulse {
+  0%,
+  100% {
+    transform: scale(0.88);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
 }
 
 /* QA mode (?qa=1): shows the 600x400 webcam-safe zone on every stage */

@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Slide } from "./Slide";
 import { Box, Header } from "../ui/primitives";
 import { closing, references } from "@/lib/content";
-import { FINISH_INDEX, SLIDE_COUNT } from "@/lib/scene";
+import { FINISH_INDEX, SLIDE_COUNT } from "@/lib/deck";
 
 export function ClosingAsks() {
   return (

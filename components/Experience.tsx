@@ -1,31 +1,23 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Lenis from "lenis";
-import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
-import dynamic from "next/dynamic";
-import ScrollStory from "./ScrollStory";
+import { useEffect, useMemo, useState } from "react";
 import ProgressTrack from "./ProgressTrack";
-import { BEATS } from "@/lib/story";
+import MediaLayer from "./MediaLayer";
+import StoryLayer from "./story/StoryLayer";
 import { IntroSections } from "./sections/Intro";
 import { CareSections } from "./sections/Care";
 import { ProgramSections } from "./sections/Program";
 import { ClosingSections } from "./sections/Closing";
-import { LEAVE_EVENT } from "./sections/Slide";
+import { deck, stopLabel } from "@/lib/deck";
 
-gsap.registerPlugin(ScrollTrigger);
-
-const StoryCanvas = dynamic(() => import("./three/StoryCanvas"), { ssr: false });
-
-type Stop = { id: string; label: string; y: number };
-
+/* The presentation shell: a fixed 1920x1080 stage scaled to the window, real footage underneath,
+   the story overlays and the slides on top. Navigation is stop-based: → / ↓ / space / Enter /
+   PageDown or a wheel notch or swipe moves one stop forward (a press while footage plays skips
+   to its end), ← / ↑ / PageUp / Backspace moves back, Home / End jump. P toggles presentation
+   mode (fullscreen, no cursor, no chrome). ?stop=N opens on stop N; ?qa=1 shows the webcam zone. */
 export default function Experience() {
-  const lenisRef = useRef<Lenis | null>(null);
-  const stops = useRef<Stop[]>([]);
-  const animating = useRef(false);
   const [presenting, setPresenting] = useState(false);
   const [current, setCurrent] = useState(0);
-  const [progress, setProgress] = useState(0);
+  const [moveS, setMoveS] = useState(0);
 
   /* ---------- 1920x1080 stage scaling ---------- */
   useEffect(() => {
@@ -38,117 +30,26 @@ export default function Experience() {
     return () => window.removeEventListener("resize", fit);
   }, []);
 
-  /* ---------- stops (story beats + every slide) ---------- */
-  const computeStops = useCallback(() => {
-    const vh = window.innerHeight;
-    const list: Stop[] = [];
-    const storyEl = document.getElementById("story");
-    if (storyEl) {
-      const top = storyEl.offsetTop;
-      const dist = storyEl.offsetHeight - vh;
-      BEATS.forEach((b) => list.push({ id: `story-${b.id}`, label: "Refuel. Rebuild. Return.", y: top + dist * b.p }));
-    }
-    document.querySelectorAll<HTMLElement>("section.slide").forEach((el, i) => {
-      // a trip section's stop is its end, where the slide has fully risen over the scene
-      list.push({ id: el.id || `slide-${i}`, label: el.dataset.label || "", y: el.offsetTop + el.offsetHeight - vh });
-    });
-    stops.current = list;
-  }, []);
-
-  const nearest = useCallback((y: number) => {
-    let best = 0;
-    let bd = Infinity;
-    stops.current.forEach((s, i) => {
-      const d = Math.abs(s.y - y);
-      if (d < bd) {
-        bd = d;
-        best = i;
-      }
-    });
-    return best;
-  }, []);
-
-  const goTo = useCallback(
-    (i: number, duration = 1.5) => {
-      const lenis = lenisRef.current;
-      if (!lenis || !stops.current.length) return;
-      const idx = Math.max(0, Math.min(stops.current.length - 1, i));
-      const cur = nearest(lenis.scroll);
-      // moving on from a slide: let it start leaving now rather than when the scroll has crept past its stop
-      if (idx > cur) document.dispatchEvent(new CustomEvent(LEAVE_EVENT, { detail: { id: stops.current[cur].id } }));
-      animating.current = true;
-      const dist = Math.abs(stops.current[idx].y - lenis.scroll) / window.innerHeight;
-      const trip = dist > 1.8; // a slide trip is ~2.2 screens: ~5.5 s, moving from the first frame so a key press answers at once
-      if (duration >= 1.5) duration = trip ? Math.min(6.5, 2.4 + 1.4 * dist) : Math.min(3, 1.1 + 0.85 * dist);
-      lenis.scrollTo(stops.current[idx].y, {
-        duration,
-        easing: trip ? (t) => 0.3 * t + 0.7 * (0.5 - 0.5 * Math.cos(Math.PI * t)) : (t) => 1 - Math.pow(1 - t, 3),
-        lock: true,
-        force: true,
-        onComplete: () => {
-          animating.current = false;
-        },
-      });
-    },
-    [nearest]
-  );
-
-  /* ---------- Lenis + ScrollTrigger + snapping ---------- */
+  /* ---------- deck state for the chrome ---------- */
   useEffect(() => {
-    const lenis = new Lenis({ lerp: 0.09, wheelMultiplier: 0.9, smoothWheel: true });
-    lenisRef.current = lenis;
-    let snapTimer: number | undefined;
-    const noSnap = new URLSearchParams(window.location.search).get("nosnap") === "1";
-    let lastP = -1;
-    lenis.on("scroll", (e: Lenis) => {
-      ScrollTrigger.update();
-      // state updates re-render the chrome only (the heavy tree below is memoised), and only when they change visibly
-      const pr = e.limit > 0 ? Math.round((e.scroll / e.limit) * 400) / 400 : 0;
-      if (pr !== lastP) {
-        lastP = pr;
-        setProgress(pr);
-      }
-      const idx = nearest(e.scroll);
-      setCurrent((c) => (c === idx ? c : idx));
-      window.clearTimeout(snapTimer);
-      snapTimer = window.setTimeout(() => {
-        if (animating.current || noSnap) return;
-        const target = stops.current[nearest(lenis.scroll)];
-        if (target && Math.abs(target.y - lenis.scroll) > 3) goTo(nearest(lenis.scroll), 0.8);
-      }, 260);
+    const off = deck.subscribe((m) => {
+      setCurrent(m.to);
+      setMoveS(m.total);
     });
-    const tick = (t: number) => lenis.raf(t * 1000);
-    gsap.ticker.add(tick);
-    gsap.ticker.lagSmoothing(0);
-
-    const refresh = () => {
-      computeStops();
-      ScrollTrigger.refresh();
-    };
-    refresh();
-    const t1 = window.setTimeout(refresh, 300);
-    const t2 = window.setTimeout(refresh, 1500);
-    window.addEventListener("resize", refresh);
-    document.fonts?.ready.then(refresh);
-
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("qa") === "1") document.documentElement.classList.add("qa");
+    const start = Number(params.get("stop"));
+    if (start > 0) deck.go(start, { instant: true });
+    (window as unknown as { __deck: typeof deck }).__deck = deck;
     return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-      window.clearTimeout(snapTimer);
-      window.removeEventListener("resize", refresh);
-      gsap.ticker.remove(tick);
-      lenis.destroy();
-      lenisRef.current = null;
+      off();
     };
-  }, [computeStops, goTo, nearest]);
+  }, []);
 
-  /* ---------- keyboard ---------- */
+  /* ---------- input: keys, wheel, swipe ---------- */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const lenis = lenisRef.current;
-      if (!lenis) return;
-      const cur = nearest(lenis.targetScroll ?? lenis.scroll);
       switch (e.key) {
         case "ArrowRight":
         case "ArrowDown":
@@ -156,22 +57,22 @@ export default function Experience() {
         case " ":
         case "Enter":
           e.preventDefault();
-          goTo(cur + 1);
+          if (!e.repeat) deck.next();
           break;
         case "ArrowLeft":
         case "ArrowUp":
         case "PageUp":
         case "Backspace":
           e.preventDefault();
-          goTo(cur - 1);
+          if (!e.repeat) deck.prev();
           break;
         case "Home":
           e.preventDefault();
-          goTo(0);
+          deck.go(0, { instant: true });
           break;
         case "End":
           e.preventDefault();
-          goTo(stops.current.length - 1);
+          deck.go(deck.count - 1, { instant: true });
           break;
         case "p":
         case "P":
@@ -182,9 +83,42 @@ export default function Experience() {
           break;
       }
     };
+    let acc = 0;
+    let lock = 0;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const now = performance.now();
+      if (now < lock) return;
+      acc += e.deltaY;
+      if (Math.abs(acc) < 60) return;
+      if (acc > 0) deck.next();
+      else deck.prev();
+      acc = 0;
+      lock = now + 700;
+    };
+    let touchY: number | null = null;
+    const onTouchStart = (e: TouchEvent) => {
+      touchY = e.touches[0]?.clientY ?? null;
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      if (touchY === null) return;
+      const dy = touchY - (e.changedTouches[0]?.clientY ?? touchY);
+      touchY = null;
+      if (Math.abs(dy) < 50) return;
+      if (dy > 0) deck.next();
+      else deck.prev();
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [goTo, nearest]);
+    window.addEventListener("wheel", onWheel, { passive: false });
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("touchend", onTouchEnd, { passive: true });
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("wheel", onWheel);
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchend", onTouchEnd);
+    };
+  }, []);
 
   /* ---------- presentation mode ---------- */
   useEffect(() => {
@@ -201,40 +135,33 @@ export default function Experience() {
       if (!document.fullscreenElement) setPresenting(false);
     };
     document.addEventListener("fullscreenchange", onFs);
-    if (new URLSearchParams(window.location.search).get("qa") === "1") document.documentElement.classList.add("qa");
     return () => document.removeEventListener("fullscreenchange", onFs);
   }, []);
 
-  const label = stops.current[current]?.label ?? "";
-
-  /* the scene and every slide are built once; scroll-driven state never re-renders them */
+  /* footage, story and every slide are built once; navigation never re-renders them */
   const world = useMemo(
     () => (
       <>
-        <div className="fixed inset-0 z-0 bg-ink">
-          <StoryCanvas />
-        </div>
-        <div className="relative z-10">
-          <ScrollStory />
-          <IntroSections />
-          <CareSections />
-          <ProgramSections />
-          <ClosingSections />
-        </div>
+        <MediaLayer />
+        <StoryLayer />
+        <IntroSections />
+        <CareSections />
+        <ProgramSections />
+        <ClosingSections />
       </>
     ),
     []
   );
 
   return (
-    <main className="relative">
+    <main className="deck">
       {world}
 
       {/* chrome: hidden in presentation mode. Nothing is ever placed top-right. */}
       <div className="chrome fixed left-6 top-5 z-40 flex items-center gap-4 text-paper mix-blend-difference" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.08em" }}>
         <span className="uppercase">Refuel · Rebuild · Return</span>
         <span className="opacity-60">/</span>
-        <span className="uppercase opacity-80">{label}</span>
+        <span className="uppercase opacity-80">{stopLabel(current)}</span>
       </div>
       <div className="chrome fixed bottom-10 right-6 z-40 flex items-center gap-3 text-paper mix-blend-difference" style={{ fontSize: 14, fontWeight: 600, letterSpacing: "0.06em" }}>
         <kbd className="rounded border border-current px-2 py-0.5">←</kbd>
@@ -242,12 +169,12 @@ export default function Experience() {
         <kbd className="rounded border border-current px-2 py-0.5">space</kbd>
         <span>navigate</span>
         <span className="opacity-50">·</span>
-        <button type="button" onClick={() => setPresenting(true)} className="uppercase underline-offset-4 hover:underline">
+        <button type="button" onClick={() => setPresenting(true)} className="pointer-events-auto uppercase underline-offset-4 hover:underline">
           <kbd className="mr-2 rounded border border-current px-2 py-0.5">P</kbd>presentation mode
         </button>
       </div>
 
-      <ProgressTrack progress={progress} current={current} total={stops.current.length} />
+      <ProgressTrack progress={deck.count > 1 ? current / (deck.count - 1) : 0} current={current} total={deck.count} seconds={moveS} />
     </main>
   );
 }
