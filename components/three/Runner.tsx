@@ -26,7 +26,12 @@ const XRAY_BODY = new THREE.Color("#7cc8ff");
 const BLACK = new THREE.Color("#000000");
 const UP = new THREE.Vector3(0, 1, 0);
 
-type BodyMat = THREE.MeshStandardMaterial & { userData: { base?: THREE.Color } };
+// The model's head parts (rebuild-face.mjs) are separate meshes from the body: during the X-ray fade they keep
+// writing depth so they hide one another as when opaque (otherwise the face, drawn last, covers the hair and the far
+// side of the headband shows through her mouth), and they draw in one pass though double-sided.
+const HEAD_PARTS = new Set(["Face", "Hair", "Headband", "Gold"]);
+
+type BodyMat = THREE.MeshStandardMaterial & { userData: { base?: THREE.Color; head?: boolean } };
 
 function makeBoneMaterials() {
   const bone = new THREE.MeshStandardMaterial({ color: "#e8f1f5", emissive: "#5fb8ff", emissiveIntensity: 0.45, roughness: 0.4, transparent: true, opacity: 0, depthWrite: false });
@@ -80,26 +85,32 @@ export default function Runner() {
     const model = SkeletonUtils.clone(gltf.scene) as THREE.Group;
     const bodyMats: BodyMat[] = [];
     const bones: Record<string, THREE.Bone> = {};
+    const skinned: THREE.SkinnedMesh[] = [];
     model.traverse((o) => {
       if ((o as THREE.Bone).isBone) bones[o.name] = o as THREE.Bone;
       const mesh = o as THREE.SkinnedMesh;
       if (mesh.isSkinnedMesh) {
+        skinned.push(mesh);
         mesh.frustumCulled = false;
         mesh.renderOrder = 2;
-        mesh.castShadow = true;
         const src = (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) as THREE.MeshStandardMaterial[];
+        mesh.castShadow = !src.every((m) => /gold/i.test(m.name)); // the studs are far smaller than a shadow texel
         const cloned = src.map((m) => {
           const c = m.clone() as BodyMat;
           c.transparent = true;
           if (!/gold/i.test(m.name)) c.metalness = Math.min(c.metalness, 0.25); // the earrings stay metal
           c.envMapIntensity = 0.9;
           c.userData.base = c.color.clone();
+          c.userData.head = HEAD_PARTS.has(m.name);
+          if (c.userData.head) c.forceSinglePass = true;
           bodyMats.push(c);
           return c;
         });
         mesh.material = cloned.length === 1 ? cloned[0] : cloned;
       }
     });
+    // every part is skinned to the same joints: share one skeleton so its bone matrices update once a frame
+    for (const m of skinned.slice(1)) m.bind(skinned[0].skeleton, m.bindMatrix);
 
     // ----- X-ray skeleton, parented to the rig -----
     const { bone, risk } = mats;
@@ -271,7 +282,7 @@ export default function Runner() {
       m.emissive.copy(BLACK).lerp(XRAY_BODY, x * 0.9);
       m.emissiveIntensity = 0.7 * x;
       m.opacity = 1 - 0.88 * x;
-      m.depthWrite = x < 0.05;
+      m.depthWrite = x < 0.05 || !!m.userData.head;
     }
     // the skeleton only appears once her body has gone translucent, so nothing ghosts over her face beforehand
     mats.bone.opacity = srange(x, 0.45, 1) * 0.95;
