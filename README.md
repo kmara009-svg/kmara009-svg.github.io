@@ -41,7 +41,7 @@ Pushing to `main` deploys to GitHub Pages through `.github/workflows/deploy.yml`
 | `lib/scene.ts` | Scene state shared between the scroll triggers and the 3D scene; slide markers along the lap; the trip timeline (`TRIP_CAM`, `TRIP_RUN`) the camera, runner and slides share |
 | `lib/slideLayer.ts` | The slides as a layer over the scene: how much of each shows, and the perspective transform that glues a coming or going slide to its billboard's face |
 | `lib/signs.ts`, `components/three/Billboards.tsx` | One billboard per slide (canvas-rendered title) and its camera placement |
-| `public/models/` | `runner.glb` (Mixamo "Michelle" character, from the three.js examples, with rebuilt bare legs, face and hair) and `run.json` (a Mixamo run clip retargeted onto her rig) |
+| `public/models/` | `runner.glb` (Mixamo "Michelle" character, from the three.js examples, with rebuilt bare legs, face and hair; the original model's own animations are dropped) and `run.json`, `walk.json`, `idle.json` (Mixamo clips retargeted onto her rig, the only animation the app plays) |
 | `scripts/model/` | `rebuild-legs.mjs` rebuilds `runner.glb`'s legs from the original model; `rebuild-face.mjs` (with `face-paint.mjs`, `face-lib.mjs`) then gives her the new face, hair, headband and earrings (usage in each file's header) |
 | `components/sections/` | One component per slide |
 | `components/charts/` | Risk bars, energy-availability zone bar, interval chart |
