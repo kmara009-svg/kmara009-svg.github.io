@@ -23,7 +23,7 @@ Pushing to `main` deploys to GitHub Pages through `.github/workflows/deploy.yml`
 * Every stop is a 1920×1080 stage, scaled to fit the window. Record at 1920×1080 for a 1:1 layout.
 * `→` `↓` `space` `enter` advance, `←` `↑` go back, `Home` / `End` jump. The 3D story has six beats; each slide is one stop.
 * The story opens on a bird's-eye view of the whole oval with the titles, then descends onto her running before the X-ray.
-* Every slide has a billboard beside the track at its marker. Between slides the camera zooms out of the previous sign, follows her run (pulling back a little) until she halts in her lane just before the next sign (run, walk and idle clips blend by her speed), then swings onto the sign and zooms into it; the slide fades in over it with its entrance animations, and leaves in a quick timed beat the moment you move on. She crosses the finish line for the closing slide, then jogs on to a last sign for the references, shown all at once. Keyboard trips take about five seconds with an ease-in-out.
+* Every slide lives on a billboard beside the track at its marker. When you move on, the slide shrinks back onto its billboard and dissolves into it while the camera backs straight off the sign, swings round behind her as she sets off, and follows her run (pulling back a little mid-run). As she halts in her lane just before the next sign (run, walk and idle clips blend by her speed), the camera swings onto that sign and closes in until its face exactly fills the screen, and the next slide grows out of it with its entrance animations. Going back plays the same move in reverse. She crosses the finish line for the closing slide (the camera orbits round her as she does), then jogs on to a last sign for the references, shown all at once. Keyboard trips take about six and a half seconds and start moving on the first frame; pressing again mid-trip carries straight on.
 * Press `P` for presentation mode: fullscreen, cursor hidden, navigation chrome hidden. `Esc` leaves it.
 * The top-right 600×400 px of every stop is kept empty for a webcam overlay. Open `/?qa=1` to see that zone outlined.
 * All text is 28 px or larger at 1920×1080.
@@ -38,9 +38,11 @@ Pushing to `main` deploys to GitHub Pages through `.github/workflows/deploy.yml`
 | `components/ScrollStory.tsx` | Pinned hero → X-ray → bone → finish-line story with HTML overlays |
 | `components/three/` | Stadium (oval, stands, crowd, sky, sun), rigged runner + bone-parented X-ray skeleton, dust, marching-cubes bone, camera rig |
 | `lib/trackPath.ts` | The 400 m oval: position and heading at any distance along lane 1 |
-| `lib/scene.ts` | Scene state shared between the scroll triggers and the 3D scene; slide markers along the lap |
+| `lib/scene.ts` | Scene state shared between the scroll triggers and the 3D scene; slide markers along the lap; the trip timeline (`TRIP_CAM`, `TRIP_RUN`) the camera, runner and slides share |
+| `lib/slideLayer.ts` | The slides as a layer over the scene: how much of each shows, and the perspective transform that glues a coming or going slide to its billboard's face |
 | `lib/signs.ts`, `components/three/Billboards.tsx` | One billboard per slide (canvas-rendered title) and its camera placement |
-| `public/models/` | `runner.glb` (Mixamo "Michelle" character, from the three.js examples) and `run.json` (a Mixamo run clip retargeted onto her rig) |
+| `public/models/` | `runner.glb` (Mixamo "Michelle" character, from the three.js examples, with rebuilt bare legs) and `run.json` (a Mixamo run clip retargeted onto her rig) |
+| `scripts/model/` | `rebuild-legs.mjs`: rebuilds `runner.glb`'s legs from the original model (usage in the file header) |
 | `components/sections/` | One component per slide |
 | `components/charts/` | Risk bars, energy-availability zone bar, interval chart |
 | `public/fallback/` | Static frames shown if WebGL is unavailable |
@@ -50,6 +52,6 @@ The injury-report slide uses `public/images/injury-report.png`; swap that file t
 ## The 3D story
 
 * **Stadium**: a full 400 m oval (two 84.39 m straights, 37.1 m bends, eight lanes) with a grass infield, a main stand and a north stand holding about 7,000 instanced spectators (per-seat colours, a vertex-shader bob), floodlights, a big screen, trees and buildings beyond, a Preetham sky, a shadow-casting sun that follows the runner, and image-based lighting. Everything is procedural; no external textures.
-* **Runner**: a textured, rigged Mixamo character driven by a motion-captured Mixamo run clip. The clip was retargeted onto her skeleton offline (per-bone rest-pose offsets, then `SkeletonUtils.retargetClip`) and stored as `public/models/run.json`. To use a different character, export a Mixamo rig as GLB, retarget the clip onto it the same way and point `components/three/Runner.tsx` at the new files.
+* **Runner**: a textured, rigged Mixamo character driven by a motion-captured Mixamo run clip. The model's own legs were wide trouser tubes; they are replaced by bare legs lofted from anatomical cross-sections (calf heads, shin, patella, knee hollow, vastus medialis, Achilles, slim ankles), tucked into the shorts hem with the shorts' own skin weights and into the shoes, and skinned with a knee blend that is long in front and short behind (`scripts/model/rebuild-legs.mjs`). The clip was retargeted onto her skeleton offline (per-bone rest-pose offsets, then `SkeletonUtils.retargetClip`) and stored as `public/models/run.json`. To use a different character, export a Mixamo rig as GLB, retarget the clip onto it the same way and point `components/three/Runner.tsx` at the new files.
 * **X-ray**: her body fades to a translucent glow while capsule bones parented to her real rig bones light up. The pelvis, sacrum, femoral neck, tibia and foot bones use the lime "high-risk" material.
 * **Bone**: trabecular bone is a warped gyroid isosurface polygonised with three's `MarchingCubes`. Scroll progress drives the trabecular thickness and a grain term that perforates the network, so it thins to an osteoporotic lattice and rebuilds again.
