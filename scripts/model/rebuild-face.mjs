@@ -15,6 +15,8 @@
 //    bun closes it.
 // 5. Lay a headband where a tilted plane crosses the hair and tie a bow on it.
 // 6. Hinge an ear on the hair behind each side of the face, swung out until it clears the hair, with a gold stud.
+// 7. Drop the model's own animations (SambaDance and TPose, about 1.4 MB): the app plays the run, walk and idle clips
+//    in public/models/*.json instead.
 // Everything new is skinned to the head (the nape edge borrows the neck's weights).
 import { NodeIO } from "@gltf-transform/core";
 import { ALL_EXTENSIONS, KHRMaterialsIOR, KHRMaterialsSpecular } from "@gltf-transform/extensions";
@@ -800,6 +802,14 @@ addPrim(GOLDM, goldMat);
     a.setArray(out);
   }
   prim.getIndices().setArray(indexArray(keepTris.map((i) => remap[i]), m));
+}
+// the model's own animations are never played (the app loads its clips from public/models/*.json)
+for (const anim of root.listAnimations()) {
+  const accessors = new Set(anim.listSamplers().flatMap((smp) => [smp.getInput(), smp.getOutput()]));
+  for (const ch of anim.listChannels()) ch.dispose();
+  for (const smp of anim.listSamplers()) smp.dispose();
+  anim.dispose();
+  for (const acc of accessors) if (acc && acc.listParents().every((p) => p.propertyType === "Root")) acc.dispose();
 }
 await io.write(dst, doc);
 console.log("face", F.pos.length, "hair", H.pos.length, "band", B.pos.length, "ears", EAR.pos.length, "studs", GOLDM.pos.length);
