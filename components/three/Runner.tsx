@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
 import { storyState, srange, smooth, range } from "@/lib/story";
 import { XRAY_LABELS, labelEls } from "@/lib/labels";
-import { FINISH_INDEX, STORY_END_D, TRIP_RUN, runnerPose, scene } from "@/lib/scene";
+import { FINISH_INDEX, SLIDE_COUNT, STORY_END_D, TRIP_RUN, runnerPose, scene } from "@/lib/scene";
 import { headingOf, pointAt } from "@/lib/trackPath";
 import { tripPose } from "@/lib/runnerPath";
 
@@ -187,7 +187,9 @@ export default function Runner() {
       tz = p.z;
       th = headingOf(p);
     } else {
-      const t = tripPose(st.trip, smooth(range(st.q, TRIP_RUN[0], TRIP_RUN[1])));
+      // the last trip veers off the track to the references sign, a longer path, so it gets more of the scroll
+      const [r0, r1] = st.trip >= SLIDE_COUNT ? [0.03, 0.78] : TRIP_RUN;
+      const t = tripPose(st.trip, smooth(range(st.q, r0, r1)));
       d = t.d;
       tx = t.x;
       tz = t.z;
@@ -257,7 +259,7 @@ export default function Runner() {
       // clip speeds follow her ground speed (the mocap run is roughly 3.4 m/s, the walk 1.3 m/s), so her feet keep hold of the track
       const sprint = st.mode === "trip" && st.trip === FINISH_INDEX ? 0.3 : 0;
       const dir = 1 - 2 * ps.back;
-      a.run.setEffectiveTimeScale(dir * Math.max(0.85, Math.min(2.8, v / 3.4 + sprint)));
+      a.run.setEffectiveTimeScale(dir * Math.max(0.85, Math.min(3.7, v / 3.4 + sprint)));
       a.walk.setEffectiveTimeScale(dir * Math.max(0.7, Math.min(1.8, v / 1.3)));
     }
     mixer.update(dd * (1 - hold));

@@ -8,6 +8,7 @@ import ScrollStory from "./ScrollStory";
 import ProgressTrack from "./ProgressTrack";
 import { BEATS } from "@/lib/story";
 import { scene } from "@/lib/scene";
+import { setTransit } from "@/lib/slideLayer";
 import { IntroSections } from "./sections/Intro";
 import { CareSections } from "./sections/Care";
 import { ProgramSections } from "./sections/Program";
@@ -74,12 +75,20 @@ export default function Experience() {
   /* scroll speed (px/s), sampled from Lenis, so a move that starts while another is under way can
      pick up at the speed the page is already moving instead of restarting from a standstill */
   const vel = useRef({ v: 0, y: 0, t: 0 });
+  const dest = useRef(0); // the stop the current move is heading for
   const goTo = useCallback(
     (i: number, duration = 1.5) => {
       const lenis = lenisRef.current;
       if (!lenis || !stops.current.length) return;
       const idx = Math.max(0, Math.min(stops.current.length - 1, i));
       const from = lenis.scroll;
+      // a move across several stops (or a retarget mid-move) shows only the slide it is leaving,
+      // if it starts on one, and the one it heads for, never the slides it flies past
+      const at = nearest(from);
+      const onStop = Math.abs(stops.current[at].y - from) < 2;
+      const slideOf = (k: number) => k - BEATS.length + 1; // stops after the story beats are slides 1..n
+      setTransit(Math.abs(idx - at) > 1 || !onStop ? [onStop ? slideOf(at) : -1, slideOf(idx)] : null);
+      dest.current = idx;
       const to = stops.current[idx].y;
       const dist = Math.abs(to - from) / window.innerHeight;
       const trip = dist > 1.8; // a slide trip is 3.2 screens: ~6.5 s, moving from the first frame so a key press answers at once
@@ -105,10 +114,11 @@ export default function Experience() {
         force: true,
         onComplete: () => {
           animating.current = false;
+          setTransit(null);
         },
       });
     },
-    []
+    [nearest]
   );
   goToRef.current = goTo;
 
@@ -121,6 +131,7 @@ export default function Experience() {
     let lastP = -1;
     lenis.on("scroll", (e: Lenis) => {
       ScrollTrigger.update();
+      scene.resolve(e.scroll);
       const now = performance.now(), vs = vel.current;
       if (now - vs.t > 8) {
         const inst = ((e.scroll - vs.y) / (now - vs.t)) * 1000;
@@ -147,9 +158,13 @@ export default function Experience() {
     gsap.ticker.add(tick);
     gsap.ticker.lagSmoothing(0);
 
+    // keep the presenter on the same stop when the layout changes (fullscreen, resize, late fonts)
     const refresh = () => {
+      const at = stops.current.length && !animating.current ? nearest(lenis.scroll) : -1;
       computeStops();
       ScrollTrigger.refresh();
+      if (at >= 0 && stops.current[at] && Math.abs(stops.current[at].y - lenis.scroll) > 2) lenis.scrollTo(stops.current[at].y, { immediate: true, force: true });
+      scene.resolve(lenis.scroll);
     };
     refresh();
     const t1 = window.setTimeout(refresh, 300);
@@ -174,7 +189,8 @@ export default function Experience() {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const lenis = lenisRef.current;
       if (!lenis) return;
-      const cur = nearest(lenis.targetScroll ?? lenis.scroll);
+      // mid-move, count from where it is heading (Lenis does not update its target for programmatic scrolls)
+      const cur = animating.current ? dest.current : nearest(lenis.scroll);
       switch (e.key) {
         case "ArrowRight":
         case "ArrowDown":

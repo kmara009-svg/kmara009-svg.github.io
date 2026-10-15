@@ -22,6 +22,7 @@ const sstep = (a: number, b: number, x: number) => smooth(Math.min(1, Math.max(0
 /* how much of slide i shows for scroll state st (0..1) */
 export function presence(i: number, st: SceneState) {
   if (st.mode !== "trip") return 0;
+  if (transit && !transit.has(i)) return 0;
   if (st.trip === i) {
     const [a, b] = i === FINISH_INDEX ? FINISH_ARRIVE_Q : ARRIVE_Q;
     return sstep(a, b, st.q);
@@ -48,16 +49,26 @@ function homography(q: Quad) {
 /* where the stage sits on screen when shown flat (the .stage rule: centred, scaled to fit the
    visible viewport); measured on resize only, so a frame never forces a layout */
 let flatRect: Quad | null = null;
-function stageRect(): Quad {
-  if (!flatRect) {
-    const w = document.documentElement.clientWidth, h = document.documentElement.clientHeight;
+let flatKey = "";
+function stageRect(view?: { w: number; h: number }): Quad {
+  const w = view?.w ?? document.documentElement.clientWidth, h = view?.h ?? document.documentElement.clientHeight;
+  const key = `${w}x${h}`;
+  if (!flatRect || key !== flatKey) {
     const s = Math.min(w / 1920, h / 1080);
     const x0 = (w - 1920 * s) / 2, y0 = (h - 1080 * s) / 2, x1 = x0 + 1920 * s, y1 = y0 + 1080 * s;
     flatRect = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+    flatKey = key;
   }
   return flatRect;
 }
 if (typeof window !== "undefined") window.addEventListener("resize", () => (flatRect = null));
+
+/* while a jump passes several stops (Home, End, a second press), only the slide it leaves and
+   the one it heads for may show, so the slides flown past never flash up */
+let transit: Set<number> | null = null;
+export function setTransit(keep: number[] | null) {
+  transit = keep ? new Set(keep) : null;
+}
 
 /* style writes only when a value changes (most frames change nothing) */
 function css(e: Entry, el: HTMLElement, prop: string, value: string) {
@@ -84,12 +95,13 @@ function flatten(e: Entry) {
 let lastGlue = -1e9;
 /* per frame: projector(i) gives sign i's face on screen, or null when the slide has no sign
    (the finish line) or the sign is behind the camera */
-export function apply(projector?: (i: number) => Quad | null) {
+export function apply(projector?: (i: number) => Quad | null, view?: { w: number; h: number }) {
   if (projector) lastGlue = performance.now();
   const st = scene.get();
-  const flat = stageRect();
+  const flat = stageRect(view);
   for (const e of entries.values()) {
-    const p = presence(e.index, st);
+    const raw = presence(e.index, st);
+    const p = raw > 0.998 ? 1 : raw;
     if (p <= 0.001) {
       park(e);
       continue;
@@ -97,9 +109,10 @@ export function apply(projector?: (i: number) => Quad | null) {
     css(e, e.wrap, "visibility", "visible");
     css(e, e.wrap, "opacity", p >= 1 ? "1" : p.toFixed(4));
     const quad = projector ? projector(e.index) : null;
-    // glued while the sign's face and the flat stage differ by more than a fraction of a pixel
+    // glued while the sign's face and the flat stage visibly differ; within a pixel and a half the
+    // slide simply sits flat (crisp) over the sign beneath it
     const off = quad ? Math.max(...quad.map(([x, y], k) => Math.hypot(x - flat[k][0], y - flat[k][1]))) : 0;
-    if (quad && off > 0.6) {
+    if (quad && off > 1.5) {
       e.mode = "glued";
       css(e, e.wrap, "pointerEvents", "none");
       css(e, e.wrap, "transform", "none");

@@ -4,7 +4,7 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { hero } from "@/lib/content";
 import { STORY_VH, range, srange, story, storyState } from "@/lib/story";
-import { scene } from "@/lib/scene";
+import { scene, trackStory } from "@/lib/scene";
 import { XRAY_LABELS, labelEls } from "@/lib/labels";
 import { Box } from "./ui/primitives";
 
@@ -33,9 +33,10 @@ export default function ScrollStory() {
       scrub: true,
       onUpdate: (self) => {
         story.set(self.progress);
-        scene.setStory(self.progress);
+        scene.resolve(self.scroll());
       },
     });
+    trackStory(st);
     const unsub = story.subscribe((p) => {
       const s = storyState(p);
       const heroO = 1 - srange(p, 0.07, 0.15);

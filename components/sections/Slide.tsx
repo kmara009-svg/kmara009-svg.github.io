@@ -3,7 +3,7 @@ import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Stage } from "../ui/primitives";
-import { scene } from "@/lib/scene";
+import { scene, trackTrip } from "@/lib/scene";
 import { register } from "@/lib/slideLayer";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -29,10 +29,12 @@ export function Slide({ id, label, index, tone = "paper", stageStyle, children }
       trigger: section.current,
       start: "top bottom",
       end: "bottom bottom",
-      onUpdate: (self) => scene.setTrip(index, self.progress),
+      onUpdate: (self) => scene.resolve(self.scroll()),
     });
+    const untrack = trackTrip(index, st);
     return () => {
       st.kill();
+      untrack();
       off();
     };
   }, [index]);

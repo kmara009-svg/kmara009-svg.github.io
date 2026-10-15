@@ -30,8 +30,39 @@ export type SceneState = {
 };
 
 const state: SceneState = { mode: "story", storyP: 0, trip: 1, q: 0 };
+/* the story's and every trip's scroll range (their ScrollTrigger instances, whose start/end
+   follow every refresh); the state is resolved from the scroll position alone, so a refresh,
+   which can replay trigger callbacks in any order, never leaves a stale state behind */
+type Range = { start: number; end: number };
+let storyRange: Range | null = null;
+const tripRanges = new Map<number, Range>();
+export function trackStory(r: Range) {
+  storyRange = r;
+}
+export function trackTrip(i: number, r: Range) {
+  tripRanges.set(i, r);
+  return () => {
+    tripRanges.delete(i);
+  };
+}
+const span = (r: Range, y: number) => (r.end > r.start ? Math.min(1, Math.max(0, (y - r.start) / (r.end - r.start))) : 1);
+
 export const scene = {
   get: () => state,
+  /* set the state for scroll position y: the story up to its end, then the trip whose range
+     (start, end] holds y (a stop belongs to the trip that arrives there) */
+  resolve(y: number) {
+    // stops are whole pixels and trigger ranges are not: a pixel and a half either way still counts as the stop
+    const E = 1.5;
+    if (storyRange && y <= storyRange.end + E) return scene.setStory(span(storyRange, y));
+    let last = -1;
+    for (const [i, r] of tripRanges) {
+      if (y > r.start + E && y <= r.end + E) return scene.setTrip(i, span(r, y));
+      if (i > last) last = i;
+    }
+    const lr = tripRanges.get(last);
+    if (lr && y > lr.end) scene.setTrip(last, 1);
+  },
   setStory(p: number) {
     state.mode = "story";
     state.storyP = p;

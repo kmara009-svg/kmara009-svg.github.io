@@ -123,7 +123,9 @@ function CameraRig() {
       const last = i === FINISH_INDEX;
       const prevFinish = i - 1 === FINISH_INDEX;
       const C = TRIP_CAM;
-      const pull = Math.min(srange(q, C.pullOut[0], C.pullOut[1]), 1 - srange(q, C.pullIn[0], C.pullIn[1]));
+      // no pull-back on the short run off the finish line: the wide view would rise into the
+      // FINISH board (2.8-3.4 m up) just as the camera passes under it
+      const pull = prevFinish ? 0 : Math.min(srange(q, C.pullOut[0], C.pullOut[1]), 1 - srange(q, C.pullIn[0], C.pullIn[1]));
       // chase view with the pull-back
       const w = VIEWS.wide;
       desired.pos.fromArray(relative(p, VIEWS.chase.pos.x + (w.pos.x - VIEWS.chase.pos.x) * pull, VIEWS.chase.pos.y + (w.pos.y - VIEWS.chase.pos.y) * pull, VIEWS.chase.pos.z + (w.pos.z - VIEWS.chase.pos.z) * pull));
@@ -233,7 +235,7 @@ function SlideGlue() {
       }
       return out;
     };
-    applySlides(quadOf);
+    applySlides(quadOf, { w: size.width, h: size.height });
   });
   return null;
 }
