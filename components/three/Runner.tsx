@@ -91,7 +91,7 @@ export default function Runner() {
         const cloned = src.map((m) => {
           const c = m.clone() as BodyMat;
           c.transparent = true;
-          c.metalness = Math.min(c.metalness, 0.25);
+          if (!/gold/i.test(m.name)) c.metalness = Math.min(c.metalness, 0.25); // the earrings stay metal
           c.envMapIntensity = 0.9;
           c.userData.base = c.color.clone();
           bodyMats.push(c);
