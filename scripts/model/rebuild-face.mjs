@@ -1,21 +1,26 @@
 // Give the runner a new face and hair: big painted eyes, brows, blush and lips on a face texture of its own, sleek
 // pulled-back hair with a bun, a patterned headband with a bow, ears and gold studs.
+// The second of two steps: its input is the output of rebuild-legs.mjs (the original head, rebuilt legs).
 //   npm i --no-save @gltf-transform/core @gltf-transform/extensions sharp
-//   git show 167a41b:public/models/runner.glb > /tmp/runner-legs.glb   (the model with the rebuilt legs, original head)
+//   node scripts/model/rebuild-legs.mjs ... /tmp/runner-legs.glb   (see its header), or, for the current legs,
+//   git show 167a41b:public/models/runner.glb > /tmp/runner-legs.glb
 //   node scripts/model/rebuild-face.mjs /tmp/runner-legs.glb public/models/runner.glb
 // 1. Delete the old hair (the island holding the highest vertex: a cap plus puffs) and the slit eyelids and eyeballs.
 // 2. Move the face (the front mask, lips and nose tip) to a primitive of its own: welded, eye sockets refilled with
-//    a smooth biharmonic patch domed like a lid over an eyeball, and given cylindrical uvs onto a new texture.
-// 3. Paint that texture in body space (face-paint.mjs), blending into the old colours at the neck seam.
-// 4. Grow a hair shell from the head's open edge (the hairline is pulled down onto the forehead and the nape) to a
-//    pole at the back of the crown, shrink-wrapped over the skull, with a bun over the pole.
-// 5. Lay a headband where a tilted plane crosses the hair, tie a bow on it, and add ears with gold studs.
+//    a smooth biharmonic patch domed like a lid over an eyeball, cheeks softened, and given cylindrical uvs onto a
+//    new texture (the underside of the chin, where a cylinder folds, gets a planar chart of its own).
+// 3. Paint that texture in body space (face-paint.mjs), blending into the neck's colour along the seam.
+// 4. Grow a hair shell from the head's open edge (the hairline is pulled down onto the forehead and the nape)
+//    towards a pole at the back of the crown, shrink-wrapped over the skull; it stops just short of the pole and a
+//    bun closes it.
+// 5. Lay a headband where a tilted plane crosses the hair and tie a bow on it.
+// 6. Hinge an ear on the hair behind each side of the face, swung out until it clears the hair, with a gold stud.
 // Everything new is skinned to the head (the nape edge borrows the neck's weights).
 import { NodeIO } from "@gltf-transform/core";
-import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
+import { ALL_EXTENSIONS, KHRMaterialsIOR, KHRMaterialsSpecular } from "@gltf-transform/extensions";
 import sharp from "sharp";
-import { v3, uf, weldIds, boundaryLoops, vertexNormals, raster, dilate, smooth, clamp, mix, rayTri, closestOnTri, slerp, resampleClosed, noise1 } from "./face-lib.mjs";
-import { paintFace, paintEar } from "./face-paint.mjs";
+import { v3, uf, weldIds, boundaryLoops, vertexNormals, raster, dilate, smooth, clamp, mix, rayTri, closestOnTri, slerp, resampleClosed, noise1, noise1p } from "./face-lib.mjs";
+import { paintFace, paintEar, SKIN } from "./face-paint.mjs";
 
 const [src, dst] = process.argv.slice(2);
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
@@ -72,7 +77,7 @@ for (const g of pieces.values()) {
 const F = { pos: [], nrm: [], j: [], w: [], src: [] };
 const addV = (p, n, j, w, s) => { F.pos.push(p); F.nrm.push(n); F.j.push(j); F.w.push(w); F.src.push(s); return F.pos.length - 1; };
 const fv = new Map();
-const fIdx = [], fOld = [];
+const fIdx = [], isFill = []; // isFill: the triangle fills an eye hole (not from the old mesh)
 for (let t = 0; t < nT; t++) {
   if (!faceTri[t] || dead[t]) continue;
   const tri = [];
@@ -82,11 +87,15 @@ for (let t = 0; t < nT; t++) {
     tri.push(fv.get(w));
   }
   fIdx.push(tri);
-  fOld.push([0, 1, 2].map((k) => [UV[2 * IDX[3 * t + k]], UV[2 * IDX[3 * t + k] + 1]]));
+  isFill.push(false);
 }
 // eye holes: spider-web fill
-const EYE_C = [4.95, 145.4], ZONE = [3.45, 2.45];
-const zoneD = (p) => Math.cbrt(Math.abs((Math.abs(p[0]) - EYE_C[0]) / ZONE[0]) ** 3 + Math.abs((p[1] - EYE_C[1]) / ZONE[1]) ** 3);
+// the zone stops short of the side of the head on the outside (ZONE_OUT), where a front-on height field fails
+const EYE_C = [4.95, 145.4], ZONE = [3.45, 2.45], ZONE_OUT = 3.0;
+const zoneD = (p) => {
+  const X = Math.abs(p[0]) - EYE_C[0];
+  return Math.cbrt(Math.abs(X / (X > 0 ? ZONE_OUT : ZONE[0])) ** 3 + Math.abs((p[1] - EYE_C[1]) / ZONE[1]) ** 3);
+};
 const origTris = fIdx.map((tri) => tri.map((i) => [...F.pos[i]]));
 for (const l of boundaryLoops(fIdx)) {
   const c = l.reduce((a, i) => v3.add(a, F.pos[i]), [0, 0, 0]).map((x) => x / l.length);
@@ -96,60 +105,97 @@ for (const l of boundaryLoops(fIdx)) {
   const centre = addV([...c], [0, 0, 1], F.j[l[0]], F.w[l[0]], -1);
   for (let k = 0; k < RINGS; k++) for (let i = 0; i < l.length; i++) {
     const a = rings[k][i], b = rings[k][(i + 1) % l.length];
-    if (k === RINGS - 1) { fIdx.push([b, a, centre]); fOld.push(null); continue; }
+    if (k === RINGS - 1) { fIdx.push([b, a, centre]); isFill.push(true); continue; }
     const a2 = rings[k + 1][i], b2 = rings[k + 1][(i + 1) % l.length];
-    fIdx.push([b, a, a2], [b, a2, b2]); fOld.push(null, null);
+    fIdx.push([b, a, a2], [b, a2, b2]); isFill.push(true, true);
   }
 }
-// biharmonic patch over each eye zone, the face outside it as the boundary, plus a gentle dome
+// biharmonic patch over each eye zone, the face outside it as the boundary (so height and slope carry on
+// smoothly), plus a gentle dome like a lid over an eyeball. Solved exactly with conjugate gradients on a regular
+// grid.
 {
   const BUMP = 0.42, GH = 0.12, GX = Math.ceil((ZONE[0] + 0.6) / GH), GY = Math.ceil((ZONE[1] + 0.6) / GH);
   const surfZ = (x, y) => { let best = -1e9; for (const [a, b, c] of origTris) { const t = rayTri([x, y, 50], [0, 0, -1], a, b, c); if (t > 0) best = Math.max(best, 50 - t); } return best; };
   for (const side of [-1, 1]) {
-    const nx = 2 * GX + 1, ny = 2 * GY + 1, z = new Float64Array(nx * ny), known = new Uint8Array(nx * ny);
+    const nx = 2 * GX + 1, ny = 2 * GY + 1, z = new Float64Array(nx * ny), unknown = new Uint8Array(nx * ny);
     const gx = (i) => side * (EYE_C[0] + (i - GX) * GH), gy = (j) => EYE_C[1] + (j - GY) * GH;
+    const missing = [];
     for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
       const k = j * nx + i;
-      if (zoneD([gx(i), gy(j)]) >= 1) { z[k] = surfZ(gx(i), gy(j)); known[k] = z[k] > -1e8 ? 1 : 0; }
+      if (zoneD([gx(i), gy(j)]) < 1) { unknown[k] = 1; continue; }
+      z[k] = surfZ(gx(i), gy(j));
+      if (z[k] < -1e8) missing.push(k);
     }
-    let mean = 0, nk = 0;
-    for (let k = 0; k < z.length; k++) if (known[k]) { mean += z[k]; nk++; }
-    for (let k = 0; k < z.length; k++) if (!known[k]) z[k] = mean / nk;
-    const at = (i, j) => z[clamp(j, 0, ny - 1) * nx + clamp(i, 0, nx - 1)];
-    for (let it = 0; it < 2000; it++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-      const k = j * nx + i;
-      if (!known[k]) z[k] += 1.85 * ((at(i - 1, j) + at(i + 1, j) + at(i, j - 1) + at(i, j + 1)) / 4 - z[k]);
-    }
-    for (let it = 0; it < 12000; it++) {
-      let delta = 0;
-      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-        const k = j * nx + i;
-        if (known[k]) continue;
-        const n4 = at(i - 1, j) + at(i + 1, j) + at(i, j - 1) + at(i, j + 1);
-        const d4 = at(i - 1, j - 1) + at(i + 1, j - 1) + at(i - 1, j + 1) + at(i + 1, j + 1);
-        const f4 = at(i - 2, j) + at(i + 2, j) + at(i, j - 2) + at(i, j + 2);
-        const dz = 1.7 * ((8 * n4 - 2 * d4 - f4) / 20 - z[k]);
-        z[k] += dz;
-        delta = Math.max(delta, Math.abs(dz));
+    // cells beyond the side of the face (no surface under them) take their neighbours' height
+    const have = new Uint8Array(nx * ny).map((_, k) => (unknown[k] ? 0 : 1));
+    for (const k of missing) have[k] = 0;
+    for (let left = missing.length; left > 0; ) {
+      left = 0;
+      for (const k of missing) {
+        if (have[k]) continue;
+        const i = k % nx, j = (k - i) / nx;
+        let sum = 0, cnt = 0;
+        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+          const ii = i + di, jj = j + dj;
+          if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;
+          const q = jj * nx + ii;
+          if (have[q]) { sum += z[q]; cnt++; }
+        }
+        if (cnt) { z[k] = sum / cnt; have[k] = 2; } else left++;
       }
-      if (delta < 1e-6) break;
+      for (const k of missing) if (have[k] === 2) have[k] = 1;
     }
-    const sample = (x, y) => {
-      const fi = (Math.abs(x) - EYE_C[0]) / GH + GX, fj = (y - EYE_C[1]) / GH + GY;
+    // biharmonic stencil: 20 z - 8 (edge neighbours) + 2 (diagonals) + (two-away); known cells move to the right side
+    const STENCIL = [[0, 0, 20], [-1, 0, -8], [1, 0, -8], [0, -1, -8], [0, 1, -8], [-1, -1, 2], [1, -1, 2], [-1, 1, 2], [1, 1, 2], [-2, 0, 1], [2, 0, 1], [0, -2, 1], [0, 2, 1]];
+    const ids = [];
+    for (let k = 0; k < z.length; k++) if (unknown[k]) ids.push(k);
+    const apply = (x, out) => {
+      for (const k of ids) {
+        const i = k % nx, j = (k - i) / nx;
+        let acc = 0;
+        for (const [di, dj, w] of STENCIL) { const q = (j + dj) * nx + (i + di); if (unknown[q]) acc += w * x[q]; }
+        out[k] = acc;
+      }
+    };
+    const b = new Float64Array(z.length);
+    for (const k of ids) {
+      const i = k % nx, j = (k - i) / nx;
+      for (const [di, dj, w] of STENCIL) { const q = (j + dj) * nx + (i + di); if (!unknown[q]) b[k] -= w * z[q]; }
+    }
+    const x = new Float64Array(z.length), r = new Float64Array(z.length), pv = new Float64Array(z.length), Ap = new Float64Array(z.length);
+    for (const k of ids) { r[k] = b[k]; pv[k] = r[k]; }
+    let rr = 0; for (const k of ids) rr += r[k] * r[k];
+    const rr0 = rr;
+    let it = 0;
+    for (; it < 5000 && rr > 1e-24 * rr0; it++) {
+      apply(pv, Ap);
+      let pAp = 0; for (const k of ids) pAp += pv[k] * Ap[k];
+      const alpha = rr / pAp;
+      for (const k of ids) { x[k] += alpha * pv[k]; r[k] -= alpha * Ap[k]; }
+      let rr2 = 0; for (const k of ids) rr2 += r[k] * r[k];
+      for (const k of ids) pv[k] = r[k] + (rr2 / rr) * pv[k];
+      rr = rr2;
+    }
+    if (rr > 1e-20 * rr0) throw new Error(`eye patch solve did not converge (${it} iterations)`);
+    for (const k of ids) z[k] = x[k];
+    const at = (i, j) => z[clamp(j, 0, ny - 1) * nx + clamp(i, 0, nx - 1)];
+    const sample = (px, py) => {
+      const fi = (Math.abs(px) - EYE_C[0]) / GH + GX, fj = (py - EYE_C[1]) / GH + GY;
       const i0 = clamp(Math.floor(fi), 0, nx - 2), j0 = clamp(Math.floor(fj), 0, ny - 2), u = fi - i0, v = fj - j0;
       return at(i0, j0) * (1 - u) * (1 - v) + at(i0 + 1, j0) * u * (1 - v) + at(i0, j0 + 1) * (1 - u) * v + at(i0 + 1, j0 + 1) * u * v;
     };
-    const height = (x, y) => { const d = zoneD([x, y]); return sample(x, y) + (d < 1 ? BUMP * Math.pow(1 - d * d, 2) : 0); };
+    const height = (px, py) => { const d = zoneD([px, py]); return sample(px, py) + (d < 1 ? BUMP * Math.pow(1 - d * d, 2) : 0); };
     F.pos.forEach((p, i) => {
       if (Math.sign(p[0]) !== side || zoneD(p) >= 1) return;
-      p[2] = height(p[0], p[1]);
       const e = 0.05, dx = (height(p[0] + e, p[1]) - height(p[0] - e, p[1])) / (2 * e), dy = (height(p[0], p[1] + e) - height(p[0], p[1] - e)) / (2 * e);
+      p[2] = height(p[0], p[1]);
       F.nrm[i] = v3.norm([-dx, -dy, 1]);
     });
+    console.log(`eye patch ${side > 0 ? "left" : "right"}: ${ids.length} cells, converged in ${it} iterations`);
   }
 }
 for (let t = 0; t < fIdx.length; t++) {
-  if (fOld[t]) continue;
+  if (!isFill[t]) continue;
   const [a, b, c] = fIdx[t];
   if (v3.cross(v3.sub(F.pos[b], F.pos[a]), v3.sub(F.pos[c], F.pos[a]))[2] < 0) fIdx[t] = [a, c, b];
 }
@@ -165,11 +211,13 @@ for (let t = 0; t < fIdx.length; t++) {
     F.pos.forEach((p, i) => { if (d[i]) { p[0] += d[i][0]; p[1] += d[i][1]; p[2] += d[i][2]; } });
   };
   for (let it = 0; it < 24; it++) { step(0.5); step(-0.53); }
-  // fuller, rounder cheeks
+  // fuller, rounder cheeks, fuller lips and a softer, rounder jaw
   const N0 = vertexNormals(new Float32Array(F.pos.flat()), fIdx.flat());
   F.pos.forEach((p, i) => {
     if (border.has(i) || zoneD(p) < 1) return;
-    const h = 0.34 * Math.exp(-(((Math.abs(p[0]) - 5.3) / 2.0) ** 2) - (((p[1] - 141.3) / 1.8) ** 2));
+    const h = 0.34 * Math.exp(-(((Math.abs(p[0]) - 5.3) / 2.0) ** 2) - (((p[1] - 141.3) / 1.8) ** 2))
+      + 0.3 * Math.exp(-((p[0] / 2.1) ** 2) - (((p[1] - 139.8) / 0.8) ** 2)) * smooth(0.55, 0.85, N0[3 * i + 2]) // front of the lips only, not inside the mouth
+      + 0.45 * Math.exp(-(((Math.abs(p[0]) - 5.0) / 2.2) ** 2) - (((p[1] - 137.6) / 1.6) ** 2));
     p[0] += N0[3 * i] * h; p[1] += N0[3 * i + 1] * h; p[2] += N0[3 * i + 2] * h;
   });
   const N = vertexNormals(new Float32Array(F.pos.flat()), fIdx.flat());
@@ -183,9 +231,43 @@ for (let t = 0; t < fIdx.length; t++) {
 // cylindrical uvs around a vertical axis behind the face
 const ZC = -4, UA = (95 * Math.PI) / 180, YT = 158.5, YB = 133.5;
 F.uv = F.pos.map((p) => [0.5 + Math.atan2(p[0], p[2] - ZC) / (2 * UA), (YT - p[1]) / (YT - YB)]);
+// Under the chin the face turns downwards, where the cylinder squeezes it and folds it over itself. Those triangles
+// get a chart of their own, a plan seen from below in a free corner of the texture (CHIN_BOX), with their own
+// copies of the vertices they share with the rest of the face.
+const FT = 1024;
+const CHIN_BOX = [806, 8, 206, 196]; // x, y, w, h (px)
+const uvArea = (t) => { const [a, b, c] = t.map((i) => F.uv[i]); return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]); };
+const faceNormal = (t) => v3.norm(v3.cross(v3.sub(F.pos[t[1]], F.pos[t[0]]), v3.sub(F.pos[t[2]], F.pos[t[0]])));
+const cylSign = Math.sign(fIdx.reduce((acc, t) => acc + Math.sign(uvArea(t)) * (faceNormal(t)[2] > 0.5 ? 1 : 0), 0));
+const isChin = fIdx.map((t) => {
+  const n = faceNormal(t), y = (F.pos[t[0]][1] + F.pos[t[1]][1] + F.pos[t[2]][1]) / 3;
+  return y < 138.5 && (n[1] < -0.45 || (n[1] < 0 && Math.sign(uvArea(t)) !== cylSign));
+});
+{
+  const chinV = new Map(), chinPts = [];
+  fIdx.forEach((t, k) => { if (isChin[k]) for (const i of t) if (!chinV.has(i)) { chinV.set(i, -1); chinPts.push(F.pos[i]); } });
+  const xs = chinPts.map((p) => p[0]), zs = chinPts.map((p) => p[2]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), z0 = Math.min(...zs), z1 = Math.max(...zs);
+  const [bx, by, bw, bh] = CHIN_BOX, scale = Math.min(bw / (x1 - x0), bh / (z1 - z0));
+  for (const i of chinV.keys()) {
+    const j = addV([...F.pos[i]], [...F.nrm[i]], F.j[i], F.w[i], F.src[i]);
+    F.uv[j] = [(bx + (F.pos[i][0] - x0) * scale) / FT, (by + (z1 - F.pos[i][2]) * scale) / FT];
+    chinV.set(i, j);
+  }
+  fIdx.forEach((t, k) => { if (isChin[k]) fIdx[k] = t.map((i) => chinV.get(i)); });
+  // checks: the chart does not fold, the rest of the face stays out of its box, and what folds in the cylinder now
+  const chinTris = fIdx.filter((_, k) => isChin[k]);
+  const chinSigns = new Set(chinTris.map((t) => Math.sign(uvArea(t))).filter((x) => x));
+  if (chinSigns.size > 1) throw new Error("the chin chart folds");
+  for (const [k, t] of fIdx.entries()) {
+    if (isChin[k]) continue;
+    for (const i of t) { const u = F.uv[i][0] * FT, v = F.uv[i][1] * FT; if (u > bx - 4 && u < bx + bw + 4 && v > by - 4 && v < by + bh + 4) throw new Error("the face overlaps the chin chart"); }
+  }
+  const folded = fIdx.filter((t, k) => !isChin[k] && Math.sign(uvArea(t)) === -cylSign);
+  console.log(`chin chart: ${chinTris.length} triangles, ${scale.toFixed(1)} px/cm; ${folded.length} triangles still fold in the cylinder (lips and nose, under-the-lip and nostril surfaces)`);
+}
 
 /* ======================= 3. the face texture ======================= */
-const FT = 1024;
 const EAR_BOX = [12, 6, 190, 190]; // a free corner of the face texture for the ears: x, y, w, h (px)
 const faceTex = await (async () => {
   const { data: D, info } = await sharp(Buffer.from(body.getBaseColorTexture().getImage())).removeAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -194,15 +276,30 @@ const faceTex = await (async () => {
     const x = u * DW - 0.5, y = v * DW - 0.5, x0 = clamp(Math.floor(x), 0, DW - 2), y0 = clamp(Math.floor(y), 0, DW - 2), fx = x - x0, fy = y - y0;
     return [0, 1, 2].map((k) => D[3 * (y0 * DW + x0) + k] * (1 - fx) * (1 - fy) + D[3 * (y0 * DW + x0 + 1) + k] * fx * (1 - fy) + D[3 * ((y0 + 1) * DW + x0) + k] * (1 - fx) * fy + D[3 * ((y0 + 1) * DW + x0 + 1) + k] * fx * fy);
   };
-  const seam = boundaryLoops(fIdx).sort((a, b) => b.length - a.length)[0].map((i) => F.pos[i]).filter((p) => p[1] < 141.5);
-  const seamDist = (p) => { let d = 1e9; for (const q of seam) d = Math.min(d, v3.len(v3.sub(p, q))); return d; };
+  // Along the seam with the neck the face blends into the neck's own colour (the body keeps its atlas there), so the
+  // two meet without a step: each seam vertex takes the atlas colour it has on the neck side.
+  const neckUV = new Map(); // welded position -> atlas uv on a kept body triangle
+  for (let t = 0; t < nT; t++) {
+    if (dead[t] || faceTri[t]) continue;
+    for (let k = 0; k < 3; k++) { const i = IDX[3 * t + k]; if (!neckUV.has(W[i])) neckUV.set(W[i], [UV[2 * i], UV[2 * i + 1]]); }
+  }
+  const seam = boundaryLoops(fIdx).sort((a, b) => b.length - a.length)[0]
+    .filter((i) => F.src[i] >= 0 && neckUV.has(W[F.src[i]]))
+    .map((i) => ({ p: F.pos[i], c: samp(...neckUV.get(W[F.src[i]])) }));
+  const seamInfo = (p) => {
+    // distance to the seam and the neck colour there (inverse-distance blend of the nearest seam vertices)
+    const near = seam.map((q) => ({ d: v3.len(v3.sub(p, q.p)), c: q.c })).sort((a, b) => a.d - b.d).slice(0, 3);
+    let w = 0; const c = [0, 0, 0];
+    for (const q of near) { const k = 1 / (q.d * q.d + 1e-4); w += k; for (let j = 0; j < 3; j++) c[j] += q.c[j] * k; }
+    return { d: near[0].d, c: c.map((x) => x / w) };
+  };
   const img = new Float32Array(FT * FT * 3), cov = new Uint8Array(FT * FT);
   const uvpx = new Float32Array(F.uv.flatMap((u) => [u[0] * FT, u[1] * FT]));
   raster(FT, FT, uvpx, fIdx.flat(), (px, py, l0, l1, l2, t) => {
-    const tri = fIdx[t], o = fOld[t], i = py * FT + px;
+    const tri = fIdx[t], i = py * FT + px;
     const p = [0, 1, 2].map((k) => F.pos[tri[0]][k] * l0 + F.pos[tri[1]][k] * l1 + F.pos[tri[2]][k] * l2);
-    const baked = o ? samp(o[0][0] * l0 + o[1][0] * l1 + o[2][0] * l2, o[0][1] * l0 + o[1][1] * l1 + o[2][1] * l2) : null;
-    img.set(paintFace(p, baked, seamDist(p)), 3 * i);
+    const s = seamInfo(p);
+    img.set(paintFace(p, s.c, s.d), 3 * i);
     cov[i] = 1;
   });
   const [bx, by, bw, bh] = EAR_BOX;
@@ -213,7 +310,7 @@ const faceTex = await (async () => {
     cov[i] = 1;
   }
   dilate(img, cov, FT, FT, 6);
-  for (let i = 0; i < FT * FT; i++) if (!cov[i]) img.set([97, 61, 38], 3 * i);
+  for (let i = 0; i < FT * FT; i++) if (!cov[i]) img.set(SKIN, 3 * i);
   const u8 = Buffer.from(img.map((v) => clamp(Math.round(v), 0, 255)));
   return sharp(u8, { raw: { width: FT, height: FT, channels: 3 } }).jpeg({ quality: 90, chromaSubsampling: "4:4:4" }).toBuffer();
 })();
@@ -389,15 +486,18 @@ const HW = 1024, HHT = 512;
 const hairTex = await (async () => {
   const img = Buffer.alloc(HW * HHT * 3);
   for (let y = 0; y < HHT; y++) {
-    const v = (y + 0.5) / HHT, row = Math.min(rows - 1, Math.round(v * (rows - 2)) + 1);
+    // v = t / TMAX and row r holds ts[r - 1] = TMAX * ((r - 1) / NR) ^ 1.15, so r = 1 + NR * v ^ (1 / 1.15)
+    const v = (y + 0.5) / HHT, row = clamp(Math.round(1 + NR * Math.pow(v, 1 / 1.15)), 1, rows - 1);
     const partHalf = 0.09 / rowCirc[row];
     for (let x = 0; x < HW; x++) {
       const u = (x + 0.5) / HW;
-      // strands: a few octaves of streaks across u, each wandering slowly along v
+      // strands: a few octaves of streaks across u, each wandering slowly along v; periodic in u so the shell's
+      // closing column and the bun's spiral uvs (which run past 1) meet without a seam
       let s = 0;
-      for (const [f, a] of [[180, 0.5], [97, 0.3], [41, 0.2]]) s += a * noise1(u * f + 3.1 * noise1(v * 6 + f));
+      // (each strand wanders on its own, slightly, so they run straight back rather than waving together)
+      for (const [f, a] of [[180, 0.5], [97, 0.3], [41, 0.2]]) s += a * noise1p(u * f + 0.7 * noise1p(u * 13 + v * 4 + f, 13), f);
       const g = 0.55 + 0.9 * s;
-      let c = [27 * g, 20 * g, 17 * g];
+      let c = [17 * g, 13 * g, 11 * g];
       // the parting: a fine line of scalp that fades out towards the crown
       let du = Math.abs(u - partU); du = Math.min(du, 1 - du);
       const part = smooth(1.6, 0.7, du / partHalf) * smooth(0.62, 0.35, v) * (v > 0.66 ? 0 : 1);
@@ -412,7 +512,7 @@ const hairTex = await (async () => {
 
 /* ======================= 5. headband, bow ======================= */
 // the band follows where the hair crosses a plane tilted from over the crown down to below the occiput
-const BAND_P = [0, 157.3, 3.4], BAND_N = v3.norm([0, 13.7, -17.9]);
+const BAND_P = [0, 156.6, 4.8], BAND_N = v3.norm([0, 14.6, -16.0]); // tipped forward so the pattern shows from the front
 const gPlane = (p) => v3.dot(v3.sub(p, BAND_P), BAND_N);
 const hairNrm = vertexNormals(new Float32Array(H.pos.flat()), H.idx.flat());
 const colPoint = (i, s) => {
@@ -440,17 +540,19 @@ const colCross = (i, level) => {
 };
 const B = { pos: [], uv: [], j: [], w: [], idx: [] };
 const BK = 9;
-const bandMid = [], bandFrame = [];
+const bandMid = [];
 {
   let around = 0, prevMid = null;
   const cols = [];
   for (let i = 0; i < NC; i++) {
-    const s0 = colCross(i, 0);
-    const [mid, n] = colPoint(i, s0);
+    const [mid] = colPoint(i, colCross(i, 0));
     const half = mix(1.35, 2.4, smooth(141, 155, mid[1]));
-    const sa = colCross(i, -half * 1.0), sb = colCross(i, half * 1.0);
-    cols.push({ sa, sb, mid, n });
+    cols.push({ sa: colCross(i, -half), sb: colCross(i, half), mid });
   }
+  // the pattern repeats a whole number of times around the head (about every 7.5 cm), so it closes without a jump
+  let total = 0;
+  for (let i = 0; i < NC; i++) total += v3.len(v3.sub(cols[(i + 1) % NC].mid, cols[i].mid));
+  const repeats = Math.max(1, Math.round(total / 7.5));
   for (let i = 0; i <= NC; i++) {
     const c = cols[i % NC];
     if (prevMid) around += v3.len(v3.sub(c.mid, prevMid));
@@ -461,7 +563,7 @@ const bandMid = [], bandFrame = [];
       const [p, n] = colPoint(i % NC, mix(c.sa, c.sb, f));
       const puff = Math.sin(Math.PI * f);
       const off = k === 0 || k === BK - 1 ? -0.06 : 0.12 + 0.3 * Math.pow(puff, 0.45);
-      pushV(B, v3.add(p, v3.mul(n, off)), [around / 7.5, f], headOnly());
+      pushV(B, v3.add(p, v3.mul(n, off)), [(around / total) * repeats, f], headOnly());
     }
   }
   for (let i = 0; i < NC; i++) for (let k = 0; k < BK - 1; k++) {
@@ -481,24 +583,27 @@ const bandMid = [], bandFrame = [];
   const Nn = v3.norm(v3.sub(M0, C));
   const N = v3.norm(v3.sub(Nn, v3.mul(T, v3.dot(Nn, T))));
   const Bx = v3.cross(N, T);
-  const knot = v3.add(M0, v3.mul(N, 0.75));
+  const knot = v3.add(M0, v3.mul(N, 1.15)); // sits on the band (whose top is about 0.5 above the hair)
   const base = () => B.pos.length;
   // loops
   for (const side of [-1, 1]) {
     const tilt = 0.5, dirT = v3.norm(v3.add(v3.mul(T, side * Math.cos(tilt)), v3.mul(N, Math.sin(tilt))));
-    const up = v3.norm(v3.sub(N, v3.mul(dirT, v3.dot(N, dirT))));
-    // each loop is a flattened tube of fabric swept round a teardrop, pinched where it meets the knot
-    const L = 3.8, Hh = 1.7, NS = 44, NW = 14, b0 = base();
-    const path = (th) => { const sn = Math.sin(th); return v3.add(knot, v3.add(v3.mul(dirT, (L / 2) * (1 - Math.cos(th))), v3.mul(up, Hh * (sn > 0 ? sn : 0.45 * sn)))); };
+    // each wing is a flattened loop of fabric lying across the band (its plane holds the band direction, tilted up,
+    // and the across-band direction), swept as a tube whose broad side (Wd) faces out, pinched at the knot
+    const up = v3.norm(v3.sub(Bx, v3.mul(dirT, v3.dot(Bx, dirT)))), Wd = v3.norm(v3.cross(dirT, up));
+    const L = 4.4, Hh = 1.05, NS = 44, NW = 14, b0 = base();
+    // a smooth factor makes the lower half 0.8 of the upper without a kink at the tip for the tube to fold on
+    const path = (th) => { const sn = Math.sin(th); return v3.add(knot, v3.add(v3.mul(dirT, (L / 2) * (1 - Math.cos(th))), v3.mul(up, Hh * sn * (0.9 + 0.1 * sn)))); };
     for (let a = 0; a <= NS; a++) {
       const th = (a / NS) * 2 * Math.PI;
       const c = path(th), tg = v3.norm(v3.sub(path(th + 0.01), path(th - 0.01)));
-      const inPlane = v3.norm(v3.cross(Bx, tg)); // across the tube, in the loop's plane
+      const inPlane = v3.norm(v3.cross(Wd, tg)); // across the tube, in the loop's plane
       const pinch = 0.28 + 0.72 * Math.pow(Math.sin(th / 2), 1.1);
-      const wa = 1.45 * pinch, wb = 0.32 + 0.12 * pinch;
+      // thinner round the tip, where the loop turns tightest
+      const wa = 1.6 * pinch, wb = (0.36 + 0.18 * pinch) * (1 - 0.3 * Math.exp(-(((th - Math.PI) / 0.6) ** 2)));
       for (let k = 0; k <= NW; k++) {
         const ph = (k / NW) * 2 * Math.PI;
-        const p = v3.add(c, v3.add(v3.mul(Bx, wa * Math.cos(ph)), v3.mul(inPlane, wb * Math.sin(ph))));
+        const p = v3.add(c, v3.add(v3.mul(Wd, wa * Math.cos(ph)), v3.mul(inPlane, wb * Math.sin(ph))));
         pushV(B, p, [(a / NS) * 0.9 + (side > 0 ? 0.05 : 0.55), 0.5 + 0.5 * Math.cos(ph)], headOnly());
       }
     }
@@ -562,28 +667,56 @@ const fabricTex = await (async () => {
 })();
 
 /* ======================= 6. ears and studs ======================= */
+// Each ear hinges on its front edge, which sits on the hair just behind the face, and swings out from the head
+// towards the back like a real ear. The front sheet is a shallow bowl (a raised rim round a concha), the back sheet
+// a dome sunk into the head; they meet at the rim. If the hair still stands above any part of the bowl, the ear is
+// pushed out until it clears.
 const EAR = { pos: [], uv: [], j: [], w: [], idx: [] };
 const GOLDM = { pos: [], uv: [], j: [], w: [], idx: [] };
+const hairTris = H.idx.map((t) => t.map((i) => H.pos[i]));
+const headSurface = hairTris.concat(faceTris); // where the ear's front edge sits, the hair meets the face
+const castNear = (tris, o, d) => { let best = Infinity; for (const [a, b, c] of tris) { const t = rayTri(o, d, a, b, c); if (t > 0 && t < best) best = t; } return best; };
 for (const s of [-1, 1]) {
-  const yc = 144.9, zc = -1.85;
-  const xs = castOut(H.idx.map((t) => t.map((i) => H.pos[i])), [0, yc, zc], [s, 0, 0]);
-  const Ec = [s * (xs - 0.2), yc, zc];
-  const n = v3.norm([s, 0, 0.42]);
-  const up = v3.norm([0, Math.cos(0.17), -Math.sin(0.17)]);
-  const wv = v3.norm(v3.cross(up, n)); // across the ear
-  const HE = 2.45, WE = 1.4, NT = 36, NR2 = 10;
-  const shape = (rho, th, front) => {
-    const back = Math.cos(th) * v3.dot(wv, [0, 0, -1]) > 0 ? 1 : 0; // the back edge sticks out more
-    const out = front ? (0.25 + 0.55 * smooth(0.45, 0.85, rho) - 0.8 * smooth(0.9, 1.0, rho)) * (0.75 + 0.5 * back * Math.abs(Math.cos(th))) : -0.9 * (1 - rho * rho);
-    const rr = rho * (1 + 0.08 * Math.sin(th) * (Math.sin(th) < 0 ? 1 : 0)); // fuller lobe
-    return v3.add(Ec, v3.add(v3.mul(up, HE * rr * Math.sin(th)), v3.add(v3.mul(wv, WE * rr * Math.cos(th)), v3.mul(n, out))));
+  const yc = 144.9, zh = -0.9, ALPHA = 0.38, HE = 2.45, WE = 1.4, NT = 36, NR2 = 10;
+  const hitAt = (y, z) => {
+    const r = castOut(headSurface, [0, y, z], [s, 0, 0]);
+    if (r < 6) throw new Error(`no head surface beside the ear at y=${y} z=${z}`);
+    return [s * r, y, z];
   };
+  const hinge = hitAt(yc, zh);
+  let nh = v3.norm(v3.cross(v3.sub(hitAt(yc + 0.3, zh), hitAt(yc - 0.3, zh)), v3.sub(hitAt(yc, zh + 0.3), hitAt(yc, zh - 0.3))));
+  if (nh[0] * s < 0) nh = v3.mul(nh, -1);
+  // in the hair's tangent plane: up (leaning back 10 degrees) and back (towards the back of the head)
+  const up0 = v3.norm(v3.sub([0, 1, 0], v3.mul(nh, nh[1])));
+  let back0 = v3.norm(v3.cross(up0, nh));
+  if (back0[2] > 0) back0 = v3.mul(back0, -1);
+  const up = v3.norm(v3.add(v3.mul(up0, Math.cos(0.17)), v3.mul(back0, Math.sin(0.17))));
+  let back = v3.norm(v3.cross(up, nh));
+  if (back[2] > 0) back = v3.mul(back, -1);
+  // swing out about the front edge: across the ear runs back and out, the ear faces out and a little forward
+  const wv = v3.norm(v3.add(v3.mul(back, Math.cos(ALPHA)), v3.mul(nh, Math.sin(ALPHA))));
+  const n = v3.norm(v3.sub(v3.mul(nh, Math.cos(ALPHA)), v3.mul(back, Math.sin(ALPHA))));
+  let Ec = v3.add(hinge, v3.add(v3.mul(wv, WE * 0.92), v3.mul(n, -0.12)));
+  const out = (rho, front) => (front ? 0.25 + 0.55 * smooth(0.45, 0.85, rho) - 0.8 * smooth(0.9, 1.0, rho) : -0.9 * (1 - rho * rho));
+  const shape = (rho, th, front) => {
+    const rr = rho * (1 + 0.08 * Math.sin(th) * (Math.sin(th) < 0 ? 1 : 0)); // fuller lobe
+    return v3.add(Ec, v3.add(v3.mul(up, HE * rr * Math.sin(th)), v3.add(v3.mul(wv, WE * rr * Math.cos(th)), v3.mul(n, out(rho, front)))));
+  };
+  // clear the hair: the largest height of hair above the bowl, measured along the ear's normal
+  let push = 0;
+  for (let a = 0; a < NT; a++) for (let r = 0; r <= 8; r++) {
+    const p = shape(r / NR2, (a / NT) * 2 * Math.PI, true), t = castNear(hairTris, p, n);
+    if (t < 3) push = Math.max(push, t + 0.05);
+  }
+  Ec = v3.add(Ec, v3.mul(n, push));
+  console.log(`ear ${s > 0 ? "left" : "right"}: pushed out ${push.toFixed(2)} cm to clear the hair`);
   const [bx, by, bw, bh] = EAR_BOX;
   for (const front of [true, false]) {
     const b0 = EAR.pos.length;
     for (let a = 0; a <= NT; a++) for (let r = 0; r <= NR2; r++) {
       const th = (a / NT) * 2 * Math.PI, rho = r / NR2;
-      const uu = 0.5 + 0.5 * rho * Math.cos(th) * s, vv = 0.5 - 0.5 * rho * Math.sin(th);
+      // the decal's u runs from the front edge to the back edge on both ears
+      const uu = 0.5 + 0.5 * rho * Math.cos(th), vv = 0.5 - 0.5 * rho * Math.sin(th);
       pushV(EAR, shape(rho, th, front), [(bx + uu * bw) / FT, (by + vv * bh) / FT], headOnly());
     }
     for (let a = 0; a < NT; a++) for (let r = 0; r < NR2; r++) {
@@ -595,7 +728,7 @@ for (const s of [-1, 1]) {
     if ((v3.dot(nn, n) < 0) === front) for (let k = k0; k < EAR.idx.length; k++) { const [a, b, c] = EAR.idx[k]; EAR.idx[k] = [a, c, b]; }
   }
   // stud on the lobe
-  const lobe = v3.add(shape(0.72, -Math.PI / 2 - 0.25 * s * 0, true), v3.mul(n, 0.12));
+  const lobe = v3.add(shape(0.72, -Math.PI / 2, true), v3.mul(n, 0.12));
   const R = 0.3, NTs = 14, NPs = 8, b0 = GOLDM.pos.length;
   for (let a = 0; a <= NTs; a++) for (let b = 0; b <= NPs; b++) {
     const th = (a / NTs) * 2 * Math.PI, ph = (b / NPs) * Math.PI;
@@ -609,27 +742,41 @@ for (const s of [-1, 1]) {
 
 /* ======================= 7. write ======================= */
 const isUint8 = JNT instanceof Uint8Array;
+const indexArray = (arr, nVerts) => (nVerts <= 65535 ? new Uint16Array(arr) : new Uint32Array(arr));
 function addPrim(G, material, normals) {
-  const n = G.pos.length;
+  // drop zero-area triangles (the pole fans of the parametric parts) and any vertex left unused
+  const P = (i) => G.pos[i];
+  const tris = G.idx.filter(([a, b, c]) => v3.len(v3.cross(v3.sub(P(b), P(a)), v3.sub(P(c), P(a)))) > 1e-8);
+  const remap = new Int32Array(G.pos.length).fill(-1), keep = [];
+  for (const t of tris) for (const i of t) if (remap[i] < 0) { remap[i] = keep.length; keep.push(i); }
+  const n = keep.length;
   const pos = new Float32Array(n * 3), uv = new Float32Array(n * 2), jn = isUint8 ? new Uint8Array(n * 4) : new Uint16Array(n * 4), wt = new Float32Array(n * 4);
-  G.pos.forEach((p, i) => { pos[3 * i] = p[0] / 100; pos[3 * i + 1] = p[1] / 100; pos[3 * i + 2] = p[2] / 100; });
-  G.uv.forEach((u, i) => { uv[2 * i] = u[0]; uv[2 * i + 1] = u[1]; });
-  G.j.forEach((j, i) => jn.set(j, 4 * i));
-  G.w.forEach((w, i) => wt.set(w, 4 * i));
-  const idx = new Uint32Array(G.idx.flat());
-  const nrm = normals ? new Float32Array(normals.flat()) : vertexNormals(pos, idx);
+  keep.forEach((src, i) => {
+    const p = G.pos[src];
+    pos[3 * i] = p[0] / 100; pos[3 * i + 1] = p[1] / 100; pos[3 * i + 2] = p[2] / 100;
+    uv[2 * i] = G.uv[src][0]; uv[2 * i + 1] = G.uv[src][1];
+    jn.set(G.j[src], 4 * i); wt.set(G.w[src], 4 * i);
+  });
+  const idx = indexArray(tris.flat().map((i) => remap[i]), n);
+  const nrm = normals ? new Float32Array(keep.flatMap((src) => normals[src])) : vertexNormals(pos, idx);
   const buf = root.listBuffers()[0];
   const acc = (arr, type) => doc.createAccessor().setArray(arr).setType(type).setBuffer(buf);
   const p = doc.createPrimitive().setMaterial(material).setIndices(acc(idx, "SCALAR"))
-    .setAttribute("POSITION", acc(pos, "VEC3")).setAttribute("NORMAL", acc(nrm, "VEC3")).setAttribute("TEXCOORD_0", acc(uv, "VEC2"))
+    .setAttribute("POSITION", acc(pos, "VEC3")).setAttribute("NORMAL", acc(nrm, "VEC3"))
     .setAttribute("JOINTS_0", acc(jn, "VEC4")).setAttribute("WEIGHTS_0", acc(wt, "VEC4"));
+  if (material.getBaseColorTexture()) p.setAttribute("TEXCOORD_0", acc(uv, "VEC2"));
   mesh.addPrimitive(p);
   return p;
 }
 const tex = (name, buf, mime = "image/jpeg") => doc.createTexture(name).setImage(new Uint8Array(buf)).setMimeType(mime);
-// the skin matches the body: its metal/roughness map reads 0.5 metal (the app caps it at 0.25) and 0.64 roughness on the skin
-const faceMat = doc.createMaterial("Face").setBaseColorTexture(tex("Face_Diffuse", faceTex)).setRoughnessFactor(0.64).setMetallicFactor(0.25).setDoubleSided(true);
-const hairMat = doc.createMaterial("Hair").setBaseColorTexture(tex("Hair_Diffuse", hairTex)).setRoughnessFactor(0.52).setMetallicFactor(0).setDoubleSided(true);
+// The skin matches the body's material: its metal/roughness map reads 0.5 metal (the app caps it at 0.25) and 0.64
+// roughness on the skin, and its KHR_materials_specular colour texture reads 133/255 (sRGB) with an ior of 1.45.
+const srgbToLinear = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+const SKIN_SPECULAR = srgbToLinear(133 / 255);
+const faceMat = doc.createMaterial("Face").setBaseColorTexture(tex("Face_Diffuse", faceTex)).setRoughnessFactor(0.64).setMetallicFactor(0.25).setDoubleSided(true)
+  .setExtension("KHR_materials_ior", doc.createExtension(KHRMaterialsIOR).createIOR().setIOR(1.45))
+  .setExtension("KHR_materials_specular", doc.createExtension(KHRMaterialsSpecular).createSpecular().setSpecularFactor(1).setSpecularColorFactor([SKIN_SPECULAR, SKIN_SPECULAR, SKIN_SPECULAR]));
+const hairMat = doc.createMaterial("Hair").setBaseColorTexture(tex("Hair_Diffuse", hairTex)).setRoughnessFactor(0.38).setMetallicFactor(0).setDoubleSided(true);
 const fabricMat = doc.createMaterial("Headband").setBaseColorTexture(tex("Headband_Diffuse", fabricTex)).setRoughnessFactor(0.85).setMetallicFactor(0).setDoubleSided(true);
 const goldMat = doc.createMaterial("Gold").setBaseColorFactor([1.0, 0.76, 0.33, 1]).setRoughnessFactor(0.25).setMetallicFactor(1);
 
@@ -652,7 +799,7 @@ addPrim(GOLDM, goldMat);
     for (let i = 0; i < nV; i++) if (remap[i] >= 0) for (let k = 0; k < size; k++) out[remap[i] * size + k] = arr[i * size + k];
     a.setArray(out);
   }
-  prim.getIndices().setArray(new Uint32Array(keepTris.map((i) => remap[i])));
+  prim.getIndices().setArray(indexArray(keepTris.map((i) => remap[i]), m));
 }
 await io.write(dst, doc);
 console.log("face", F.pos.length, "hair", H.pos.length, "band", B.pos.length, "ears", EAR.pos.length, "studs", GOLDM.pos.length);

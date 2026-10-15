@@ -21,7 +21,7 @@ function brow(c, ax, y) {
 
 /* ---------- eyes ---------- */
 const EC = [4.85, 145.3], TILT = 0.07; // centre (|x|, y), outer corner lifted
-const WI = 1.95, WO = 2.1, HU = 1.34, HL = 0.98;
+const WI = 1.95, WO = 2.1, HU = 1.16, HL = 0.98; // the upper lid sits over the top of the iris
 const lidU = (X) => { const q = X < 0 ? X / WI : X / WO; return Math.abs(q) >= 1 ? -1e3 : HU * Math.pow(1 - q * q, 0.6) - 0.05 * q; };
 const lidL = (X) => { const q = X < 0 ? X / WI : X / WO; return Math.abs(q) >= 1 ? 1e3 : -HL * Math.pow(1 - q * q, 0.8) + 0.05 * q; };
 const LASHES = [0.12, 0.34, 0.54, 0.72, 0.88, 1.0].map((q, k) => {
@@ -31,7 +31,8 @@ const LASHES = [0.12, 0.34, 0.54, 0.72, 0.88, 1.0].map((q, k) => {
   const pl = bezier2(p0, p1, p2, 10);
   return { pl, cum: cumLen(pl), w: 0.075 - 0.01 * k };
 });
-const WING = (() => { const pl = bezier2([WO - 0.35, 0.2], [WO + 0.15, 0.32], [WO + 0.62, 0.62], 12); return { pl, cum: cumLen(pl) }; })();
+// the wing leaves the lash line just inside the outer corner (on the lid, not in the white) and flicks up and out
+const WING = (() => { const x0 = WO - 0.35, pl = bezier2([x0, lidU(x0) + 0.08], [WO + 0.15, 0.36], [WO + 0.62, 0.62], 12); return { pl, cum: cumLen(pl) }; })();
 function eye(c, x, y) {
   const ax = Math.abs(x);
   let X = ax - EC[0], Y = y - EC[1];
@@ -52,13 +53,14 @@ function eye(c, x, y) {
     const cornerShade = 1 - 0.18 * smooth(-1.2, -1.9, X) - 0.15 * smooth(1.3, 2.05, X);
     over(c, w.map((v) => v * lidShade * cornerShade), a);
     // iris: the screen-left offset of the highlights is the same for both eyes (one light)
-    const IX = -0.1, IY = 0.06, R = 1.02;
+    const IX = -0.1, IY = 0.1, R = 1.12;
     const dx = X - IX, dy = Y - IY, r = Math.hypot(dx, dy);
     if (r < R + AA) {
       const t = clamp((IY - Y) / R * 0.5 + 0.5, 0, 1); // 0 top, 1 bottom
-      let col = [mix(52, 150, Math.pow(t, 1.4)), mix(28, 88, Math.pow(t, 1.4)), mix(14, 42, Math.pow(t, 1.4))];
+      // dark brown, lighter towards the bottom
+      let col = [mix(30, 96, Math.pow(t, 1.4)), mix(16, 56, Math.pow(t, 1.4)), mix(9, 28, Math.pow(t, 1.4))];
       const ring = smooth(0.72, 0.98, r / R);
-      col = col.map((v, k) => mix(v, [34, 18, 11][k], ring));
+      col = col.map((v, k) => mix(v, [18, 10, 6][k], ring));
       // fine radial fibres
       const ang = Math.atan2(dy, dx);
       const fib = 0.92 + 0.08 * Math.sin(ang * 23 + 1.3) * Math.sin(ang * 7.0);
@@ -96,23 +98,25 @@ function eye(c, x, y) {
 }
 
 /* ---------- lips ---------- */
-const YM = 139.86, WM = 2.7;
+const YM = 139.86, WM = 2.5;
 const upperTop = (x) => {
   const ax = Math.abs(x), q = ax / WM;
   if (q >= 1) return YM;
-  return YM + 0.78 * Math.pow(1 - q * q, 0.5) - 0.13 * Math.exp(-((x / 0.24) ** 2)) + 0.07 * Math.exp(-(((ax - 0.52) / 0.3) ** 2));
+  return YM + 0.92 * Math.pow(1 - q * q, 0.5) - 0.13 * Math.exp(-((x / 0.24) ** 2)) + 0.07 * Math.exp(-(((ax - 0.52) / 0.3) ** 2));
 };
-const lowerBot = (x) => { const q = Math.abs(x) / (WM * 0.94); return q >= 1 ? YM : YM - 0.95 * Math.pow(1 - q * q, 0.55); };
+// past the corners there is no lower lip (returning YM there would paint a sliver between YM and the curved mouth line)
+const lowerBot = (x) => { const q = Math.abs(x) / (WM * 0.94); return q >= 1 ? 1e3 : YM - 1.08 * Math.pow(1 - q * q, 0.55); };
 const mouthLine = (x) => YM + 0.06 * (x / WM) ** 2;
 function lips(c, x, y) {
   if (Math.abs(x) > WM + 0.4 || y < 138.7 || y > 141.2) return;
   const ml = mouthLine(x);
   const dU = Math.max(ml - y, y - upperTop(x)), dL = Math.max(y - ml, lowerBot(x) - y);
-  over(c, [128, 52, 42], 0.95 * fill(dU, 0.05));
-  over(c, [158, 70, 54], 0.95 * fill(dL, 0.05));
+  // matte peach-brown, the upper lip a shade darker
+  over(c, [126, 70, 54], 0.95 * fill(dU, 0.05));
+  over(c, [164, 98, 76], 0.95 * fill(dL, 0.05));
   // soft sheen on the lower lip
   const hx = x / 1.05, hy = (y - (ml - 0.42)) / 0.22;
-  over(c, [190, 112, 88], 0.38 * Math.exp(-(hx * hx + hy * hy)));
+  over(c, [196, 134, 108], 0.12 * Math.exp(-(hx * hx + hy * hy)));
   // mouth line, a touch heavier at the corners
   const q = Math.abs(x) / WM;
   over(c, [52, 24, 21], fill(Math.abs(y - ml) - (0.035 + 0.035 * q), 0.03) * smooth(1.06, 0.98, q));
@@ -133,11 +137,11 @@ function nose(c, x, y) {
   over(c, [118, 62, 44], 0.25 * Math.exp(-(tx * tx + ty * ty)));
 }
 
-// p: surface point (cm); baked: the old texture colour there (or null); seam: distance (cm) to the face/neck seam
-export function paintFace(p, baked, seam) {
+// p: surface point (cm); neck: the neck's colour at the nearest point of the face/neck seam; seam: distance (cm) to it
+export function paintFace(p, neck, seam) {
   const [x, y] = p;
   const c = [...SKIN];
-  if (baked) over(c, baked, 1 - smooth(0.25, 1.6, seam));
+  over(c, neck, 1 - smooth(0.1, 1.4, seam));
   blush(c, x, y);
   nose(c, x, y);
   brow(c, Math.abs(x), y);

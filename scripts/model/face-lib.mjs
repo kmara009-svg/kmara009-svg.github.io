@@ -90,20 +90,33 @@ export function closestOnTri(p, a, b, c) {
   return v3.add(a, v3.add(v3.mul(ab, v), v3.mul(ac, w)));
 }
 
-// smooth vertex normals for an indexed mesh (positions flat array), area weighted
+// smooth vertex normals for an indexed mesh (positions flat array), area weighted; vertices at the same position
+// (uv seams, poles) share one normal so seams do not crease
 export function vertexNormals(P, idx) {
+  const n = P.length / 3, key = new Map(), weld = new Int32Array(n);
+  for (let i = 0; i < n; i++) {
+    const k = `${P[3 * i].toFixed(6)},${P[3 * i + 1].toFixed(6)},${P[3 * i + 2].toFixed(6)}`;
+    if (!key.has(k)) key.set(k, i);
+    weld[i] = key.get(k);
+  }
   const N = new Float32Array(P.length);
   for (let t = 0; t < idx.length; t += 3) {
     const [a, b, c] = [idx[t], idx[t + 1], idx[t + 2]];
     const A = [P[3 * a], P[3 * a + 1], P[3 * a + 2]], B = [P[3 * b], P[3 * b + 1], P[3 * b + 2]], C = [P[3 * c], P[3 * c + 1], P[3 * c + 2]];
-    const n = v3.cross(v3.sub(B, A), v3.sub(C, A));
-    for (const v of [a, b, c]) { N[3 * v] += n[0]; N[3 * v + 1] += n[1]; N[3 * v + 2] += n[2]; }
+    const nn = v3.cross(v3.sub(B, A), v3.sub(C, A));
+    for (const v of [a, b, c]) { const w = weld[v]; N[3 * w] += nn[0]; N[3 * w + 1] += nn[1]; N[3 * w + 2] += nn[2]; }
   }
-  for (let i = 0; i < N.length; i += 3) { const l = Math.hypot(N[i], N[i + 1], N[i + 2]) || 1; N[i] /= l; N[i + 1] /= l; N[i + 2] /= l; }
+  for (let i = 0; i < n; i++) {
+    const w = weld[i], l = Math.hypot(N[3 * w], N[3 * w + 1], N[3 * w + 2]);
+    if (i !== w) continue;
+    if (l > 0) { N[3 * i] /= l; N[3 * i + 1] /= l; N[3 * i + 2] /= l; } else N[3 * i + 1] = 1;
+  }
+  for (let i = 0; i < n; i++) { const w = weld[i]; if (w !== i) { N[3 * i] = N[3 * w]; N[3 * i + 1] = N[3 * w + 1]; N[3 * i + 2] = N[3 * w + 2]; } }
   return N;
 }
 
-// centripetal Catmull-Rom resample of a closed polyline to n points (by arc length)
+// uniform Catmull-Rom resample of a closed polyline to n points, spaced by arc length along the input
+// (the hair edge input is 48 points 0.6-2.2 cm apart; the curve stays within about 1 mm of the polyline)
 export function resampleClosed(pts, n) {
   const m = pts.length, seg = [];
   let total = 0;
@@ -114,7 +127,6 @@ export function resampleClosed(pts, n) {
     while (s > seg[i] && i < m - 1) { s -= seg[i]; i++; }
     const t = seg[i] > 0 ? s / seg[i] : 0;
     const p0 = pts[(i - 1 + m) % m], p1 = pts[i], p2 = pts[(i + 1) % m], p3 = pts[(i + 2) % m];
-    // uniform Catmull-Rom is fine for the dense, evenly spaced loops used here
     const t2 = t * t, t3 = t2 * t;
     out.push([0, 1, 2].map((k2) => 0.5 * (2 * p1[k2] + (-p0[k2] + p2[k2]) * t + (2 * p0[k2] - 5 * p1[k2] + 4 * p2[k2] - p3[k2]) * t2 + (-p0[k2] + 3 * p1[k2] - 3 * p2[k2] + p3[k2]) * t3)));
   }
@@ -199,3 +211,8 @@ export function bezier3(p0, p1, p2, p3, n) {
 // deterministic hash noise
 export function hash(n) { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
 export function noise1(x) { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return mix(hash(i), hash(i + 1), u); }
+// the same noise, repeating every `period` (an integer), so a texture built from noise1p(u * period) tiles in u
+export function noise1p(x, period) {
+  const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f), m = (k) => ((k % period) + period) % period;
+  return mix(hash(m(i)), hash(m(i + 1)), u);
+}

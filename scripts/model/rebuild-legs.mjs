@@ -1,7 +1,9 @@
-// Replace the runner's trouser-tube legs with anatomically shaped bare legs.
+// Replace the runner's trouser-tube legs with anatomically shaped bare legs. The first of two steps: the face and
+// hair come next (rebuild-face.mjs), and the shipped model is the output of both.
 //   npm i --no-save @gltf-transform/core @gltf-transform/extensions pngjs sharp
 //   git show 815bfcf:public/models/runner.glb > /tmp/runner-src.glb   (the model before this rebuild)
-//   node scripts/model/rebuild-legs.mjs /tmp/runner-src.glb public/models/runner.glb [profile.json]
+//   node scripts/model/rebuild-legs.mjs /tmp/runner-src.glb /tmp/runner-legs.glb [profile.json]
+//   node scripts/model/rebuild-face.mjs /tmp/runner-legs.glb public/models/runner.glb
 // 1. Delete the old leg surface between the shoe collar and the mid-thigh shorts hem (common.mjs).
 // 2. Loft a new leg per side along the bind-pose bone axis (ankle -> knee -> hip) from anatomical
 //    cross-sections: four elliptical quadrants (front, lateral, back, medial) per height plus muscle
