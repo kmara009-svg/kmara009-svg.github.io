@@ -1,0 +1,78 @@
+/* Shared scene state written by the scroll triggers and read by the 3D scene each frame. */
+import { TRACK_LENGTH } from "./trackPath";
+
+export const FINISH_INDEX = 20; // the finish-line slide: she crosses the line one lap after the story
+export const SLIDE_COUNT = 21; // slides after the story; the last one (references) sits just past the finish line
+export const STORY_END_D = 56; // metres covered during the pinned story
+export const REFERENCES_D = TRACK_LENGTH + 22; // the references sign, a short jog on from the finish line (on the infield side, clear of the story views)
+export const markerD = (i: number) =>
+  i >= SLIDE_COUNT ? REFERENCES_D : i >= FINISH_INDEX ? TRACK_LENGTH : STORY_END_D + (i * (TRACK_LENGTH - STORY_END_D)) / FINISH_INDEX;
+/* slide i (1-based) has its sign at markerD(i); the story runs from 0 to markerD(0) */
+
+/* the trip timeline in q (0 = leaving the previous stop, 1 = at this slide), shared by the runner,
+   the camera and the slide layer: back off the sign, swing behind her as she sets off, chase with a
+   pull-back mid-run, swing onto the next sign as she halts, zoom into it */
+export const TRIP_RUN: [number, number] = [0.05, 0.7]; // she runs from the previous stop to this one
+export const TRIP_CAM = {
+  back: [0, 0.07] as [number, number], // dolly straight back off the previous sign
+  swing: [0.04, 0.17] as [number, number], // from that sign round to the chase view behind her
+  pullOut: [0.14, 0.34] as [number, number], // the chase widens mid-run...
+  pullIn: [0.5, 0.66] as [number, number], // ...and closes again as she slows
+  approach: [0.66, 0.84] as [number, number], // swing onto the next sign while she halts
+  zoom: [0.84, 1] as [number, number], // close in until the sign fills the stage (to the very end, so a step back moves at once)
+};
+
+export type SceneState = {
+  mode: "story" | "trip";
+  storyP: number; // 0..1 within the pinned story
+  trip: number; // 1-based slide index while in a trip section
+  q: number; // 0..1 within that trip section
+};
+
+const state: SceneState = { mode: "story", storyP: 0, trip: 1, q: 0 };
+/* the story's and every trip's scroll range (their ScrollTrigger instances, whose start/end
+   follow every refresh); the state is resolved from the scroll position alone, so a refresh,
+   which can replay trigger callbacks in any order, never leaves a stale state behind */
+type Range = { start: number; end: number };
+let storyRange: Range | null = null;
+const tripRanges = new Map<number, Range>();
+export function trackStory(r: Range) {
+  storyRange = r;
+}
+export function trackTrip(i: number, r: Range) {
+  tripRanges.set(i, r);
+  return () => {
+    tripRanges.delete(i);
+  };
+}
+const span = (r: Range, y: number) => (r.end > r.start ? Math.min(1, Math.max(0, (y - r.start) / (r.end - r.start))) : 1);
+
+export const scene = {
+  get: () => state,
+  /* set the state for scroll position y: the story up to its end, then the trip whose range
+     (start, end] holds y (a stop belongs to the trip that arrives there) */
+  resolve(y: number) {
+    // stops are whole pixels and trigger ranges are not: a pixel and a half either way still counts as the stop
+    const E = 1.5;
+    if (storyRange && y <= storyRange.end + E) return scene.setStory(span(storyRange, y));
+    let last = -1;
+    for (const [i, r] of tripRanges) {
+      if (y > r.start + E && y <= r.end + E) return scene.setTrip(i, span(r, y));
+      if (i > last) last = i;
+    }
+    const lr = tripRanges.get(last);
+    if (lr && y > lr.end) scene.setTrip(last, 1);
+  },
+  setStory(p: number) {
+    state.mode = "story";
+    state.storyP = p;
+  },
+  setTrip(i: number, q: number) {
+    state.mode = "trip";
+    state.trip = i;
+    state.q = q;
+  },
+};
+
+/* live runner transform, written by the Runner every frame for effects that follow her */
+export const runnerPose = { x: 0, z: 0, heading: 0, d: 0, speed: 0 };

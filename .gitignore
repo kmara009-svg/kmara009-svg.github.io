@@ -7,5 +7,3 @@ next-env.d.ts
 
 lab/
 public/models/Xbot.glb
-
-.cache/
