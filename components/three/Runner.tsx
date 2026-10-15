@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
 import { storyState, srange, smooth, range } from "@/lib/story";
 import { XRAY_LABELS, labelEls } from "@/lib/labels";
-import { FINISH_INDEX, STORY_END_D, runnerPose, scene } from "@/lib/scene";
+import { FINISH_INDEX, STORY_END_D, TRIP_RUN, runnerPose, scene } from "@/lib/scene";
 import { headingOf, pointAt } from "@/lib/trackPath";
 import { tripPose } from "@/lib/runnerPath";
 
@@ -171,7 +171,7 @@ export default function Runner() {
 
   /* her smoothed transform: the scroll-driven target is followed with a short lag so the
      motion stays even whatever the scroll and frame cadences do */
-  const pose = useRef({ x: 0, z: 0, h: 0, speed: 0, init: false });
+  const pose = useRef({ x: 0, z: 0, h: 0, speed: 0, back: 0, wr: 1, ww: 0, wi: 0, init: false });
   useFrame(({ camera, size }, dt) => {
     const st = scene.get();
     const s = storyState(st.mode === "story" ? st.storyP : 1);
@@ -187,7 +187,7 @@ export default function Runner() {
       tz = p.z;
       th = headingOf(p);
     } else {
-      const t = tripPose(st.trip, smooth(range(st.q, 0.1, 0.66)));
+      const t = tripPose(st.trip, smooth(range(st.q, TRIP_RUN[0], TRIP_RUN[1])));
       d = t.d;
       tx = t.x;
       tz = t.z;
@@ -210,6 +210,9 @@ export default function Runner() {
     ps.h += dh * k;
     const inst = dd > 0 ? Math.min(Math.hypot(ps.x - px, ps.z - pz) / dd, 14) : 0;
     ps.speed += (inst - ps.speed) * (1 - Math.exp(-dd / 0.12));
+    // stepping back through the deck moves her backwards: play her stride in reverse, not a moonwalk
+    const along = (ps.x - px) * Math.sin(ps.h) + (ps.z - pz) * Math.cos(ps.h);
+    ps.back += ((dd > 0 && along / dd < -0.4 ? 1 : 0) - ps.back) * (1 - Math.exp(-dd / 0.1));
     runnerPose.d = d;
     runnerPose.x = ps.x;
     runnerPose.z = ps.z;
@@ -228,12 +231,14 @@ export default function Runner() {
       return;
     }
 
-    // run / walk / idle blend from her speed (in the story she runs, and settles to a stand for the X-ray)
+    // run / walk / idle blend from her speed (in the story she runs, and settles to a stand for the
+    // X-ray; from the finish beat on, her speed decides, so the story hands over to slide 1 without a
+    // pop). The weights are low-passed so any change of mode crossfades.
     const a = actions.current;
     if (a) {
       const v = ps.speed;
       let wr: number, ww: number, wi: number;
-      if (st.mode === "story") {
+      if (st.mode === "story" && sp < 0.865) {
         wi = hold;
         wr = 1 - hold;
         ww = 0;
@@ -242,13 +247,18 @@ export default function Runner() {
         wi = 1 - srange(v, 0.08, 0.7);
         ww = (1 - wi) * (1 - wr);
       }
-      a.run.setEffectiveWeight(wr);
-      a.walk.setEffectiveWeight(ww);
-      a.idle.setEffectiveWeight(wi);
-      // clip speeds follow her ground speed (the mocap run is roughly 3.4 m/s, the walk 1.3 m/s)
+      const kw = 1 - Math.exp(-dd / 0.18);
+      ps.wr += (wr - ps.wr) * kw;
+      ps.ww += (ww - ps.ww) * kw;
+      ps.wi += (wi - ps.wi) * kw;
+      a.run.setEffectiveWeight(ps.wr);
+      a.walk.setEffectiveWeight(ps.ww);
+      a.idle.setEffectiveWeight(ps.wi);
+      // clip speeds follow her ground speed (the mocap run is roughly 3.4 m/s, the walk 1.3 m/s), so her feet keep hold of the track
       const sprint = st.mode === "trip" && st.trip === FINISH_INDEX ? 0.3 : 0;
-      a.run.setEffectiveTimeScale(Math.max(0.85, Math.min(1.9, v / 3.4 + sprint)));
-      a.walk.setEffectiveTimeScale(Math.max(0.7, Math.min(1.8, v / 1.3)));
+      const dir = 1 - 2 * ps.back;
+      a.run.setEffectiveTimeScale(dir * Math.max(0.85, Math.min(2.8, v / 3.4 + sprint)));
+      a.walk.setEffectiveTimeScale(dir * Math.max(0.7, Math.min(1.8, v / 1.3)));
     }
     mixer.update(dd * (1 - hold));
 

@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { useEffect, useMemo } from "react";
 import { useThree } from "@react-three/fiber";
-import { SIGNS, signPose } from "@/lib/signs";
+import { SIGNS, SIGN_FACE, signPose } from "@/lib/signs";
 import { FINISH_INDEX, SLIDE_COUNT } from "@/lib/scene";
 
 /* one 16:9 board per slide, rendered from a canvas: eyebrow, title and slide number */
@@ -98,8 +98,8 @@ export default function Billboards() {
           <mesh material={back} position={[0, 2.3, -0.08]} castShadow>
             <boxGeometry args={[4.4, 2.56, 0.12]} />
           </mesh>
-          <mesh position={[0, 2.3, 0]}>
-            <planeGeometry args={[4.2, 2.36]} />
+          <mesh position={[0, SIGN_FACE.y, 0]}>
+            <planeGeometry args={[SIGN_FACE.w, SIGN_FACE.h]} />
             <meshStandardMaterial map={s.tex} emissive="#ffffff" emissiveMap={s.tex} emissiveIntensity={0.25} roughness={0.6} />
           </mesh>
         </group>

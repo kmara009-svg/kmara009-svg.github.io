@@ -9,6 +9,19 @@ export const markerD = (i: number) =>
   i >= SLIDE_COUNT ? REFERENCES_D : i >= FINISH_INDEX ? TRACK_LENGTH : STORY_END_D + (i * (TRACK_LENGTH - STORY_END_D)) / FINISH_INDEX;
 /* slide i (1-based) has its sign at markerD(i); the story runs from 0 to markerD(0) */
 
+/* the trip timeline in q (0 = leaving the previous stop, 1 = at this slide), shared by the runner,
+   the camera and the slide layer: back off the sign, swing behind her as she sets off, chase with a
+   pull-back mid-run, swing onto the next sign as she halts, zoom into it */
+export const TRIP_RUN: [number, number] = [0.05, 0.7]; // she runs from the previous stop to this one
+export const TRIP_CAM = {
+  back: [0, 0.07] as [number, number], // dolly straight back off the previous sign
+  swing: [0.04, 0.17] as [number, number], // from that sign round to the chase view behind her
+  pullOut: [0.14, 0.34] as [number, number], // the chase widens mid-run...
+  pullIn: [0.5, 0.66] as [number, number], // ...and closes again as she slows
+  approach: [0.66, 0.84] as [number, number], // swing onto the next sign while she halts
+  zoom: [0.84, 1] as [number, number], // close in until the sign fills the stage (to the very end, so a step back moves at once)
+};
+
 export type SceneState = {
   mode: "story" | "trip";
   storyP: number; // 0..1 within the pinned story
@@ -17,14 +30,8 @@ export type SceneState = {
 };
 
 const state: SceneState = { mode: "story", storyP: 0, trip: 1, q: 0 };
-/* the slide most recently left and when: the camera pulls out of its sign in real time from then */
-export const left = { index: -1, at: 0 };
 export const scene = {
   get: () => state,
-  leave(index: number) {
-    left.index = index;
-    left.at = performance.now();
-  },
   setStory(p: number) {
     state.mode = "story";
     state.storyP = p;

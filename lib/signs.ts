@@ -30,3 +30,14 @@ export function signPose(i: number): SignPose {
   nz /= l;
   return { x, z, nx, nz, yaw: Math.atan2(nx, nz) };
 }
+
+/* the printed face of every sign: exactly 16:9 so a slide can sit on it edge to edge */
+export const SIGN_FACE = { w: 4.2, h: (4.2 * 9) / 16, y: 2.3 };
+/* world corners of sign i's face, as seen from in front: top-left, top-right, bottom-right, bottom-left */
+export function signCorners(i: number): [number, number, number][] {
+  const p = signPose(i);
+  const c = Math.cos(p.yaw), s = Math.sin(p.yaw);
+  const hw = SIGN_FACE.w / 2, hh = SIGN_FACE.h / 2, lz = 0.002;
+  const at = (lx: number, ly: number): [number, number, number] => [p.x + lx * c + lz * s, SIGN_FACE.y + ly, p.z - lx * s + lz * c];
+  return [at(-hw, hh), at(hw, hh), at(hw, -hh), at(-hw, -hh)];
+}

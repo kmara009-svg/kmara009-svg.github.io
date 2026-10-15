@@ -10,9 +10,10 @@ import Billboards from "./Billboards";
 import { Dust } from "./Effects";
 import MicroBone, { MICRO_ORIGIN } from "./MicroBone";
 import { story, storyState, srange, range } from "@/lib/story";
-import { FINISH_INDEX, SLIDE_COUNT, left, runnerPose, scene } from "@/lib/scene";
+import { FINISH_INDEX, SLIDE_COUNT, TRIP_CAM, runnerPose, scene } from "@/lib/scene";
 import { pointAt, relative } from "@/lib/trackPath";
-import { signPose } from "@/lib/signs";
+import { SIGN_FACE, signCorners, signPose } from "@/lib/signs";
+import { apply as applySlides, type Quad } from "@/lib/slideLayer";
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 /* runner-relative camera views: x to her right, y up, z ahead */
@@ -29,15 +30,30 @@ const VIEWS = {
 /* opening view: high over the home straight, the whole oval in frame to the right of the titles */
 const AERIAL = { pos: V(-20, 185, 120), tgt: V(0, 0, -8) };
 const HAZE = new THREE.Color("#d3dbe6");
+/* ?qa=1: per-frame hooks for automated motion checks */
+const QA = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("qa") === "1";
 const DARK = new THREE.Color("#141416");
 
+/* a runner-relative point on an orbit round her from view A to view B (the shorter way round),
+   radius and height eased across, so a swing from behind her to in front never cuts through her */
+function orbitRel(A: THREE.Vector3, B: THREE.Vector3, t: number, out: THREE.Vector3) {
+  const a0 = Math.atan2(A.x, A.z);
+  let a1 = Math.atan2(B.x, B.z);
+  if (a1 - a0 > Math.PI) a1 -= 2 * Math.PI;
+  if (a0 - a1 > Math.PI) a1 += 2 * Math.PI;
+  const ang = a0 + (a1 - a0) * t;
+  const r0 = Math.hypot(A.x, A.z), r = r0 + (Math.hypot(B.x, B.z) - r0) * t;
+  return out.set(Math.sin(ang) * r, A.y + (B.y - A.y) * t, Math.cos(ang) * r);
+}
+
 function CameraRig() {
-  const { camera, scene: three } = useThree();
+  const { camera, scene: three, size } = useThree();
   const desired = useMemo(() => ({ pos: new THREE.Vector3(), tgt: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0) }), []);
   const lookAt = useRef(new THREE.Vector3());
   const wasMicro = useRef(false);
   const a = useMemo(() => new THREE.Vector3(), []);
   const b = useMemo(() => new THREE.Vector3(), []);
+  const rel3 = useMemo(() => new THREE.Vector3(), []);
 
   useFrame((_, dt) => {
     camera.layers.enable(1);
@@ -97,45 +113,66 @@ function CameraRig() {
         desired.tgt.lerp(a, t2);
       }
     } else {
-      // trip: zoom out of the previous sign, run (chase pulls back a little), swing onto this
-      // slide's sign while she halts in front of it, then zoom into the sign; the slide then
-      // rises over the zoomed-in sign
+      // trip (lib/scene TRIP_CAM): back straight off the previous sign while its slide settles onto
+      // it, swing round behind her as she sets off, chase (widening mid-run), swing onto this
+      // slide's sign as she halts, then close in until the sign exactly fills the stage, where
+      // the slide grows out of it. Every phase is a function of q, so the move is continuous
+      // from the first frame of the key press and runs backwards just as well.
       const q = st.q;
       const i = st.trip;
       const last = i === FINISH_INDEX;
       const prevFinish = i - 1 === FINISH_INDEX;
-      // pull out of the previous sign: by scroll, but never slower than a timed move that starts the moment the slide is left
-      let zoomOut = 1 - srange(q, 0.0, 0.1);
-      if (left.index === i - 1) zoomOut = Math.min(zoomOut, 1 - srange((performance.now() - left.at) / 1000, 0.0, 0.65));
-      // she halts at q 0.66 while the camera is still behind her, then it swings onto the sign
-      const pull = Math.min(srange(q, 0.1, 0.3), 1 - srange(q, 0.48, 0.64));
-      const approach = srange(q, 0.66, 0.84);
-      const zoomIn = srange(q, 0.86, 0.975);
+      const C = TRIP_CAM;
+      const pull = Math.min(srange(q, C.pullOut[0], C.pullOut[1]), 1 - srange(q, C.pullIn[0], C.pullIn[1]));
       // chase view with the pull-back
       const w = VIEWS.wide;
       desired.pos.fromArray(relative(p, VIEWS.chase.pos.x + (w.pos.x - VIEWS.chase.pos.x) * pull, VIEWS.chase.pos.y + (w.pos.y - VIEWS.chase.pos.y) * pull, VIEWS.chase.pos.z + (w.pos.z - VIEWS.chase.pos.z) * pull));
       desired.tgt.fromArray(relative(p, VIEWS.chase.tgt.x + (w.tgt.x - VIEWS.chase.tgt.x) * pull, VIEWS.chase.tgt.y + (w.tgt.y - VIEWS.chase.tgt.y) * pull, VIEWS.chase.tgt.z + (w.tgt.z - VIEWS.chase.tgt.z) * pull));
-      // sign views (world space)
-      const signView = (n: number, zoomed: boolean, pos: THREE.Vector3, tgt: THREE.Vector3) => {
+      // sign views (world space). "fit": square on, at the distance where the face exactly covers
+      // the 1920x1080 stage as laid out on this screen, so the slide can sit on it edge to edge
+      const stageScale = Math.min(size.width / 1920, size.height / 1080);
+      const fitDist = (SIGN_FACE.h * size.height) / (2 * Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2) * 1080 * stageScale);
+      const signView = (n: number, fit: boolean, pos: THREE.Vector3, tgt: THREE.Vector3) => {
         const sp = signPose(n);
         const wide = n >= SLIDE_COUNT; // the references sign: she stands in front of it, so keep her in frame
-        const dist = zoomed ? 3.1 : wide ? 9.5 : 7.5;
-        pos.set(sp.x + sp.nx * dist, zoomed ? 2.25 : wide ? 2.4 : 2.1, sp.z + sp.nz * dist);
-        tgt.set(sp.x, 2.3, sp.z);
+        const dist = fit ? fitDist : wide ? 9.5 : 7.5;
+        pos.set(sp.x + sp.nx * dist, fit ? SIGN_FACE.y : wide ? 2.4 : 2.1, sp.z + sp.nz * dist);
+        tgt.set(sp.x, SIGN_FACE.y, sp.z);
       };
-      if (i > 1 && zoomOut > 0) {
-        if (prevFinish) {
-          a.fromArray(relative(p, VIEWS.finishClose.pos.x, VIEWS.finishClose.pos.y, VIEWS.finishClose.pos.z));
-          b.fromArray(relative(p, VIEWS.finishClose.tgt.x, VIEWS.finishClose.tgt.y, VIEWS.finishClose.tgt.z));
-        } else signView(i - 1, true, a, b);
-        desired.pos.lerp(a, zoomOut);
-        desired.tgt.lerp(b, zoomOut);
+      if (i > 1) {
+        const swing = 1 - srange(q, prevFinish ? 0 : C.swing[0], C.swing[1]);
+        if (swing > 0) {
+          if (prevFinish) {
+            // off the finish line: orbit round her (via her left, the infield side) from the close
+            // front view to the chase, rather than cutting straight through where she stands
+            const pl = rel3.copy(VIEWS.chase.pos).lerp(VIEWS.wide.pos, pull);
+            orbitRel(VIEWS.finishClose.pos, pl, 1 - swing, a);
+            desired.pos.fromArray(relative(p, a.x, a.y, a.z));
+            b.fromArray(relative(p, VIEWS.finishClose.tgt.x, VIEWS.finishClose.tgt.y, VIEWS.finishClose.tgt.z));
+            desired.tgt.lerp(b, swing);
+          } else {
+            signView(i - 1, false, a, b);
+            desired.pos.lerp(a, swing);
+            desired.tgt.lerp(b, swing);
+            const back = 1 - srange(q, C.back[0], C.back[1]);
+            if (back > 0) {
+              signView(i - 1, true, a, b);
+              desired.pos.lerp(a, back);
+              desired.tgt.lerp(b, back);
+            }
+          }
+        }
       }
+      // onto the finish line the swing is an orbit round her, so it gets a longer, gentler window
+      const approach = last ? srange(q, 0.54, 0.86) : srange(q, C.approach[0], C.approach[1]);
+      const zoomIn = srange(q, C.zoom[0], C.zoom[1]);
       if (approach > 0) {
         if (last) {
-          a.fromArray(relative(p, VIEWS.finish.pos.x, VIEWS.finish.pos.y, VIEWS.finish.pos.z));
+          // onto the finish line: orbit round her left from the chase to the front view
+          const pl = rel3.copy(VIEWS.chase.pos).lerp(VIEWS.wide.pos, pull);
+          orbitRel(pl, VIEWS.finish.pos, approach, a);
+          desired.pos.fromArray(relative(p, a.x, a.y, a.z));
           b.fromArray(relative(p, VIEWS.finish.tgt.x, VIEWS.finish.tgt.y, VIEWS.finish.tgt.z));
-          desired.pos.lerp(a, approach);
           desired.tgt.lerp(b, approach);
           a.fromArray(relative(p, VIEWS.finishClose.pos.x, VIEWS.finishClose.pos.y, VIEWS.finishClose.pos.z));
           b.fromArray(relative(p, VIEWS.finishClose.tgt.x, VIEWS.finishClose.tgt.y, VIEWS.finishClose.tgt.z));
@@ -160,11 +197,43 @@ function CameraRig() {
     if (micro !== wasMicro.current) snap = true;
     wasMicro.current = micro;
 
-    const k = snap ? 1 : 1 - Math.pow(0.012, Math.min(dt, 0.25)); // gentle follow, so camera moves never look rushed
+    // gentle follow, so camera moves never look rushed (QA can pin it to the path with window.__camSnap)
+    const k = snap || (QA && (window as unknown as { __camSnap?: boolean }).__camSnap) ? 1 : 1 - Math.pow(0.012, Math.min(dt, 0.25));
     camera.position.lerp(desired.pos, k);
     lookAt.current.lerp(desired.tgt, k);
     camera.up.lerp(desired.up, k).normalize();
     camera.lookAt(lookAt.current);
+    if (QA) {
+      const w = window as unknown as Record<string, unknown>;
+      Object.assign(w, { __cam: camera, __desired: desired, __lookAt: lookAt.current, __runner: runnerPose });
+      (w.__onFrame as ((dt: number, k: number) => void) | undefined)?.(dt, k);
+    }
+  });
+  return null;
+}
+
+/* Keeps every visible slide glued to its billboard: projects each sign's face with the camera of
+   this very frame (after CameraRig has moved it) and hands the quads to the slide layer. */
+const SIGN_CORNERS = new Map<number, THREE.Vector3[]>();
+for (let i = 1; i <= SLIDE_COUNT; i++) if (i !== FINISH_INDEX) SIGN_CORNERS.set(i, signCorners(i).map(([x, y, z]) => new THREE.Vector3(x, y, z)));
+function SlideGlue() {
+  const { camera, size } = useThree();
+  const v = useMemo(() => new THREE.Vector3(), []);
+  useFrame(() => {
+    camera.updateMatrixWorld();
+    const quadOf = (i: number): Quad | null => {
+      const cs = SIGN_CORNERS.get(i);
+      if (!cs) return null;
+      const out: Quad = [];
+      for (const c of cs) {
+        v.copy(c).applyMatrix4(camera.matrixWorldInverse);
+        if (v.z > -0.05) return null; // behind the camera: nothing to land on
+        v.applyMatrix4(camera.projectionMatrix);
+        out.push([((v.x + 1) / 2) * size.width, ((1 - v.y) / 2) * size.height]);
+      }
+      return out;
+    };
+    applySlides(quadOf);
   });
   return null;
 }
@@ -236,10 +305,18 @@ export default function StoryCanvas() {
           onCreated={({ gl }) => {
             gl.toneMapping = THREE.ACESFilmicToneMapping;
             gl.toneMappingExposure = 0.8;
+            if (QA) {
+              // window.__norender skips the GPU work, so motion can be traced at full frame rate on software GL
+              const w = window as unknown as Record<string, unknown>;
+              const render = gl.render.bind(gl), clear = gl.clear.bind(gl);
+              gl.render = (sc, cam) => void (!w.__norender && render(sc, cam));
+              gl.clear = (c, d, st) => void (!w.__norender && clear(c, d, st));
+            }
           }}
         >
           <fog attach="fog" args={["#d3dbe6", 260, 1700]} />
           <CameraRig />
+          <SlideGlue />
           <Suspense fallback={null}>
             <Environment resolution={128} frames={1}>
               <Lightformer intensity={1.6} color="#dfeaff" position={[0, 40, 0]} rotation-x={Math.PI / 2} scale={[100, 100, 1]} />

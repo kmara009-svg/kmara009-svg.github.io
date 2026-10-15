@@ -7,11 +7,11 @@ import dynamic from "next/dynamic";
 import ScrollStory from "./ScrollStory";
 import ProgressTrack from "./ProgressTrack";
 import { BEATS } from "@/lib/story";
+import { scene } from "@/lib/scene";
 import { IntroSections } from "./sections/Intro";
 import { CareSections } from "./sections/Care";
 import { ProgramSections } from "./sections/Program";
 import { ClosingSections } from "./sections/Closing";
-import { LEAVE_EVENT } from "./sections/Slide";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -30,7 +30,9 @@ export default function Experience() {
   /* ---------- 1920x1080 stage scaling ---------- */
   useEffect(() => {
     const fit = () => {
-      const s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+      // the visible viewport (without any scrollbar), the box the fixed slide layer and canvas fill
+      const el = document.documentElement;
+      const s = Math.min(el.clientWidth / 1920, el.clientHeight / 1080);
       document.documentElement.style.setProperty("--stage-scale", String(s));
     };
     fit();
@@ -68,21 +70,37 @@ export default function Experience() {
     return best;
   }, []);
 
+  const goToRef = useRef<(i: number, d?: number) => void>(() => {});
+  /* scroll speed (px/s), sampled from Lenis, so a move that starts while another is under way can
+     pick up at the speed the page is already moving instead of restarting from a standstill */
+  const vel = useRef({ v: 0, y: 0, t: 0 });
   const goTo = useCallback(
     (i: number, duration = 1.5) => {
       const lenis = lenisRef.current;
       if (!lenis || !stops.current.length) return;
       const idx = Math.max(0, Math.min(stops.current.length - 1, i));
-      const cur = nearest(lenis.scroll);
-      // moving on from a slide: let it start leaving now rather than when the scroll has crept past its stop
-      if (idx > cur) document.dispatchEvent(new CustomEvent(LEAVE_EVENT, { detail: { id: stops.current[cur].id } }));
-      animating.current = true;
-      const dist = Math.abs(stops.current[idx].y - lenis.scroll) / window.innerHeight;
-      const trip = dist > 1.8; // a slide trip is ~2.2 screens: ~5.5 s, moving from the first frame so a key press answers at once
+      const from = lenis.scroll;
+      const to = stops.current[idx].y;
+      const dist = Math.abs(to - from) / window.innerHeight;
+      const trip = dist > 1.8; // a slide trip is 3.2 screens: ~6.5 s, moving from the first frame so a key press answers at once
       if (duration >= 1.5) duration = trip ? Math.min(6.5, 2.4 + 1.4 * dist) : Math.min(3, 1.1 + 0.85 * dist);
-      lenis.scrollTo(stops.current[idx].y, {
+      // already moving (a second press mid-trip): start the new ease at the current speed, so the
+      // camera and the runner carry straight on rather than lurching
+      const moving = animating.current && Math.abs(vel.current.v) > 30 && Math.sign(vel.current.v) === Math.sign(to - from);
+      const m0 = moving ? Math.min(3, Math.abs((vel.current.v * duration) / (to - from || 1))) : trip ? 0.3 : 0;
+      const easing = moving || trip
+        ? (t: number) => {
+            // cubic Hermite from 0 to 1, starting with slope m0 and coming to rest; from a standstill
+            // a trip uses a gentle cosine ease with a small initial push instead
+            if (!moving) return 0.3 * t + 0.7 * (0.5 - 0.5 * Math.cos(Math.PI * t));
+            const t2 = t * t, t3 = t2 * t;
+            return (t3 - 2 * t2 + t) * m0 + (-2 * t3 + 3 * t2);
+          }
+        : (t: number) => 1 - Math.pow(1 - t, 3);
+      animating.current = true;
+      lenis.scrollTo(to, {
         duration,
-        easing: trip ? (t) => 0.3 * t + 0.7 * (0.5 - 0.5 * Math.cos(Math.PI * t)) : (t) => 1 - Math.pow(1 - t, 3),
+        easing,
         lock: true,
         force: true,
         onComplete: () => {
@@ -90,8 +108,9 @@ export default function Experience() {
         },
       });
     },
-    [nearest]
+    []
   );
+  goToRef.current = goTo;
 
   /* ---------- Lenis + ScrollTrigger + snapping ---------- */
   useEffect(() => {
@@ -102,6 +121,13 @@ export default function Experience() {
     let lastP = -1;
     lenis.on("scroll", (e: Lenis) => {
       ScrollTrigger.update();
+      const now = performance.now(), vs = vel.current;
+      if (now - vs.t > 8) {
+        const inst = ((e.scroll - vs.y) / (now - vs.t)) * 1000;
+        vs.v = now - vs.t > 120 ? inst : vs.v + (inst - vs.v) * 0.5;
+        vs.y = e.scroll;
+        vs.t = now;
+      }
       // state updates re-render the chrome only (the heavy tree below is memoised), and only when they change visibly
       const pr = e.limit > 0 ? Math.round((e.scroll / e.limit) * 400) / 400 : 0;
       if (pr !== lastP) {
@@ -201,7 +227,11 @@ export default function Experience() {
       if (!document.fullscreenElement) setPresenting(false);
     };
     document.addEventListener("fullscreenchange", onFs);
-    if (new URLSearchParams(window.location.search).get("qa") === "1") document.documentElement.classList.add("qa");
+    if (new URLSearchParams(window.location.search).get("qa") === "1") {
+      document.documentElement.classList.add("qa");
+      // QA hooks: jump between stops and read the scene state from automated checks
+      Object.assign(window, { __goTo: (i: number, d?: number) => goToRef.current(i, d), __scene: scene, __stops: () => stops.current, __lenis: () => lenisRef.current, __ST: ScrollTrigger });
+    }
     return () => document.removeEventListener("fullscreenchange", onFs);
   }, []);
 
