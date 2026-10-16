@@ -6,6 +6,9 @@ import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Runner from "./Runner";
 import Stadium from "./Stadium";
+import Park from "./Park";
+import Skyline from "./Skyline";
+import { HAZE as HAZE_HEX } from "./dusk";
 import Billboards from "./Billboards";
 import { Dust } from "./Effects";
 import MicroBone, { MICRO_ORIGIN } from "./MicroBone";
@@ -29,7 +32,7 @@ const VIEWS = {
 };
 /* opening view: high over the home straight, the whole oval in frame to the right of the titles */
 const AERIAL = { pos: V(-20, 185, 120), tgt: V(0, 0, -8) };
-const HAZE = new THREE.Color("#d3dbe6");
+const HAZE = new THREE.Color(HAZE_HEX);
 /* ?qa=1: per-frame hooks for automated motion checks */
 const QA = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("qa") === "1";
 const DARK = new THREE.Color("#141416");
@@ -193,8 +196,8 @@ function CameraRig() {
 
     if (fog) {
       fog.color.copy(micro ? DARK : HAZE);
-      fog.near = micro ? 9 : 260;
-      fog.far = micro ? 30 : 1700;
+      fog.near = micro ? 9 : 220;
+      fog.far = micro ? 30 : 2100;
     }
     if (micro !== wasMicro.current) snap = true;
     wasMicro.current = micro;
@@ -302,7 +305,7 @@ export default function StoryCanvas() {
         <Canvas
           dpr={1}
           shadows={{ type: THREE.PCFShadowMap }}
-          camera={{ fov: 34, near: 0.3, far: 3000, position: [0, 1.3, 4.3] }}
+          camera={{ fov: 34, near: 0.3, far: 4200, position: [0, 1.3, 4.3] }}
           gl={{ antialias: false, powerPreference: "high-performance", stencil: false }}
           onCreated={({ gl }) => {
             gl.toneMapping = THREE.ACESFilmicToneMapping;
@@ -316,16 +319,20 @@ export default function StoryCanvas() {
             }
           }}
         >
-          <fog attach="fog" args={["#d3dbe6", 260, 1700]} />
+          <fog attach="fog" args={[HAZE_HEX, 220, 2100]} />
           <CameraRig />
           <SlideGlue />
           <Suspense fallback={null}>
             <Environment resolution={128} frames={1}>
-              <Lightformer intensity={1.6} color="#dfeaff" position={[0, 40, 0]} rotation-x={Math.PI / 2} scale={[100, 100, 1]} />
-              <Lightformer intensity={3} color="#fff1d6" position={[30, 40, -40]} scale={[18, 18, 1]} />
-              <Lightformer intensity={0.5} color="#7f8a66" position={[0, -10, 0]} rotation-x={-Math.PI / 2} scale={[100, 100, 1]} />
+              {/* dusk: a lavender sky, the afterglow low in the west, a floodlight bank, dark ground */}
+              <Lightformer intensity={1.3} color="#c9c2f2" position={[0, 40, 0]} rotation-x={Math.PI / 2} scale={[100, 100, 1]} />
+              <Lightformer intensity={1.6} color="#ffb48a" position={[-60, 8, 15]} rotation-y={Math.PI / 2} scale={[80, 14, 1]} />
+              <Lightformer intensity={3} color="#f4f2ff" position={[30, 40, -40]} scale={[18, 18, 1]} />
+              <Lightformer intensity={0.4} color="#4f5640" position={[0, -10, 0]} rotation-x={-Math.PI / 2} scale={[100, 100, 1]} />
             </Environment>
             <Stadium />
+            <Park />
+            <Skyline />
             <Billboards />
             <Dust />
             <Runner />
