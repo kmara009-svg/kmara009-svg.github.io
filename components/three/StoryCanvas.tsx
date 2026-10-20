@@ -5,6 +5,7 @@ import { Environment, Lightformer } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Runner from "./Runner";
+import Rivals from "./Rivals";
 import Stadium from "./Stadium";
 import Park from "./Park";
 import Skyline from "./Skyline";
@@ -336,6 +337,7 @@ export default function StoryCanvas() {
             <Billboards />
             <Dust />
             <Runner />
+            <Rivals />
             <MicroBone />
           </Suspense>
           <EffectComposer multisampling={2}>

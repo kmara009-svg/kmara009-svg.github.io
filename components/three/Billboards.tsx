@@ -71,7 +71,14 @@ function Warmup({ textures }: { textures: THREE.Texture[] }) {
   const { gl, scene, camera } = useThree();
   useEffect(() => {
     for (const t of textures) gl.initTexture(t);
+    // every frame the composer's render pass draws the scene into a render target (linear output,
+    // tone mapping left to its last pass), so build the programs for that rather than for the screen
+    const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
+    const prev = gl.getRenderTarget();
+    gl.setRenderTarget(target);
     gl.compile(scene, camera);
+    gl.setRenderTarget(prev);
+    target.dispose();
   }, [gl, scene, camera, textures]);
   return null;
 }
