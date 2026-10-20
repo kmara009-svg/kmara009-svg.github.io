@@ -15,7 +15,7 @@ import Billboards from "./Billboards";
 import { Dust } from "./Effects";
 import MicroBone, { MICRO_ORIGIN } from "./MicroBone";
 import { story, storyState, srange, range } from "@/lib/story";
-import { CEREMONY, FINISH_INDEX, SLIDE_COUNT, TRIP_CAM, runnerPose, scene, tripQ } from "@/lib/scene";
+import { CEREMONY, FINISH_INDEX, SLIDE_COUNT, TRIP_CAM, dropRefsHold, runnerPose, scene, tripQ } from "@/lib/scene";
 import { CEREMONY_VIEW, LEAVE } from "@/lib/ceremony";
 import { pointAt, relative } from "@/lib/trackPath";
 import { SIGN_FACE, signCorners, signPose } from "@/lib/signs";
@@ -282,6 +282,7 @@ function webglOK() {
 /* Static-image fallback: crossfades pre-rendered frames by story progress. */
 export function StaticFallback() {
   const refs = useRef<(HTMLImageElement | null)[]>([]);
+  useEffect(dropRefsHold, []); // no ceremony to hold the last trip for
   useEffect(
     () =>
       story.subscribe((p) => {

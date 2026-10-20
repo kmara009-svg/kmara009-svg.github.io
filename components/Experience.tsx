@@ -7,7 +7,7 @@ import dynamic from "next/dynamic";
 import ScrollStory from "./ScrollStory";
 import ProgressTrack from "./ProgressTrack";
 import { BEATS } from "@/lib/story";
-import { scene } from "@/lib/scene";
+import { refsHold, scene } from "@/lib/scene";
 import { setTransit } from "@/lib/slideLayer";
 import { IntroSections } from "./sections/Intro";
 import { CareSections } from "./sections/Care";
@@ -21,15 +21,22 @@ const StoryCanvas = dynamic(() => import("./three/StoryCanvas"), { ssr: false })
 type Stop = { id: string; label: string; y: number };
 
 /* the medal trip from a standstill: a brisk run in, slower through the ceremony (lib/scene
-   CEREMONY, 0.42 to 0.84 of the way), then the zoom; a monotone cubic through (t, progress, slope) */
-const MEDAL_EASE = [
+   CEREMONY, 0.42 to 0.84 of the way), then the zoom; and back, out of the zoom, through the
+   ceremony, the run back. Both set off at once and come to rest. Monotone cubics through
+   (t, progress, slope). */
+const MEDAL_IN = [
   [0, 0, 0.3],
   [0.34, 0.42, 0.85],
   [0.8, 0.84, 0.95],
   [1, 1, 0],
 ];
-function medalEase(t: number) {
-  const K = MEDAL_EASE;
+const MEDAL_OUT = [
+  [0, 0, 0.3],
+  [0.2, 0.16, 0.95],
+  [0.66, 0.58, 0.85],
+  [1, 1, 0],
+];
+function medalEase(K: number[][], t: number) {
   let i = 0;
   while (i < K.length - 2 && t > K[i + 1][0]) i++;
   const [t0, p0, m0] = K[i], [t1, p1, m1] = K[i + 1];
@@ -110,16 +117,14 @@ export default function Experience() {
       const dist = Math.abs(to - from) / window.innerHeight;
       const trip = dist > 1.8; // a slide trip is 3.2 screens: ~6.5 s, moving from the first frame so a key press answers at once
       // the last trip, twice as long for the medal, gets the time for it when taken on its own
-      const medal = trip && Math.abs(idx - at) === 1 && Math.max(idx, at) === stops.current.length - 1;
+      const medal = trip && refsHold() && Math.abs(idx - at) === 1 && Math.max(idx, at) === stops.current.length - 1;
       if (duration >= 1.5) duration = trip ? (medal ? Math.min(12, 2.4 + 1.5 * dist) : Math.min(6.5, 2.4 + 1.4 * dist)) : Math.min(3, 1.1 + 0.85 * dist);
       // already moving (a second press mid-trip): start the new ease at the current speed, so the
       // camera and the runner carry straight on rather than lurching
       const moving = animating.current && Math.abs(vel.current.v) > 30 && Math.sign(vel.current.v) === Math.sign(to - from);
       const m0 = moving ? Math.min(3, Math.abs((vel.current.v * duration) / (to - from || 1))) : trip ? 0.3 : 0;
       const easing = medal && !moving
-        ? to > from
-          ? medalEase
-          : (t: number) => 1 - medalEase(1 - t)
+        ? (t: number) => medalEase(to > from ? MEDAL_IN : MEDAL_OUT, t)
         : moving || trip
         ? (t: number) => {
             // cubic Hermite from 0 to 1, starting with slope m0 and coming to rest; from a standstill
@@ -174,7 +179,9 @@ export default function Experience() {
       snapTimer = window.setTimeout(() => {
         if (animating.current || noSnap) return;
         const target = stops.current[nearest(lenis.scroll)];
-        if (target && Math.abs(target.y - lenis.scroll) > 3) goTo(nearest(lenis.scroll), 0.8);
+        // a short settle onto the nearest stop; from deep in the long last section (more than a
+        // trip's half away) it goes at a trip's pace instead, so the ceremony plays rather than flashes by
+        if (target && Math.abs(target.y - lenis.scroll) > 3) goTo(nearest(lenis.scroll), Math.abs(target.y - lenis.scroll) > 1.8 * window.innerHeight ? undefined : 0.8);
       }, 260);
     });
     const tick = (t: number) => lenis.raf(t * 1000);

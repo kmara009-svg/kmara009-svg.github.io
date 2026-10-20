@@ -28,8 +28,19 @@ export const TRIP_CAM = {
    the shared timeline above, so her run and the camera's moves keep their scroll distances. */
 export const REFS_LENGTH = 2;
 export const CEREMONY: [number, number] = [TRIP_CAM.approach[1] / REFS_LENGTH, TRIP_CAM.approach[1]];
+/* the extra length is the 3D ceremony's; without the 3D scene (no WebGL: the static fallback) the
+   references trip is an ordinary one again, its section back to one trip's height (the
+   --refs-length the Slide section reads; the resize makes the page re-measure its stops) */
+let hold = true;
+export const refsHold = () => hold;
+export function dropRefsHold() {
+  if (!hold) return;
+  hold = false;
+  document.documentElement.style.setProperty("--refs-length", "1");
+  window.dispatchEvent(new Event("resize"));
+}
 export function tripQ(i: number, q: number) {
-  if (i < SLIDE_COUNT) return q;
+  if (i < SLIDE_COUNT || !hold) return q;
   const [c0, c1] = CEREMONY;
   return q < c0 ? (q / c0) * c1 : q < c1 ? c1 : q;
 }

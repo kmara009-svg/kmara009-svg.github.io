@@ -148,17 +148,20 @@ function makeRibbon() {
   return geo;
 }
 const curve = new THREE.CatmullRomCurve3(Array.from({ length: 6 }, () => new THREE.Vector3()), true, "centripetal");
-const _c = new THREE.Vector3(), _tan = new THREE.Vector3(), _rad = new THREE.Vector3(), _b = new THREE.Vector3(), _pt = new THREE.Vector3();
+const samples = Array.from({ length: RIBBON_N }, () => new THREE.Vector3());
+const _c = new THREE.Vector3(), _tan = new THREE.Vector3(), _rad = new THREE.Vector3(), _b = new THREE.Vector3();
 function layRibbon(geo: THREE.BufferGeometry, pts: THREE.Vector3[]) {
-  curve.points.forEach((p, i) => p.copy(pts[i]));
+  for (let i = 0; i < pts.length; i++) curve.points[i].copy(pts[i]);
   _c.set(0, 0, 0);
   for (const p of pts) _c.add(p);
   _c.multiplyScalar(1 / pts.length);
+  // sampled by the curve's own parameter into fixed vectors (no arc-length table to go stale, nothing
+  // allocated), the tangent from the neighbouring samples round the loop
+  for (let i = 0; i < RIBBON_N; i++) curve.getPoint(i / RIBBON_N, samples[i]);
   const pos = geo.attributes.position as THREE.BufferAttribute, nrm = geo.attributes.normal as THREE.BufferAttribute;
   for (let i = 0; i <= RIBBON_N; i++) {
-    const t = (i % RIBBON_N) / RIBBON_N;
-    curve.getPointAt(t, _pt);
-    curve.getTangentAt(t, _tan);
+    const _pt = samples[i % RIBBON_N];
+    _tan.subVectors(samples[(i + 1) % RIBBON_N], samples[(i + RIBBON_N - 1) % RIBBON_N]).normalize();
     // flat against whatever it hangs round: across the loop's plane
     _rad.subVectors(_pt, _c);
     _b.crossVectors(_tan, _rad).normalize();
@@ -184,6 +187,8 @@ const WORN: [string, number, number, number][] = [
   ["mixamorigSpine2", 0, 1.222, 0.13],
   ["mixamorigSpine2", -0.034, 1.268, 0.098],
 ];
+// a point behind the medal's ring, inside her chest: the two give the way her chest faces
+const CHEST_BACK: [string, number, number, number] = ["mixamorigSpine2", 0, 1.222, -0.05];
 const MEDAL_R = 0.038;
 const AWAY = new THREE.Vector3(COACH_SPOT.x - COACH_SPOT.her.x, 0, COACH_SPOT.z - COACH_SPOT.her.z).normalize(); // from her to him
 const FILL = 110; // candela: about the evening key light's strength where they stand
@@ -272,7 +277,9 @@ export default function Coach() {
     fill.target.position.set(CEREMONY_LIGHT.tgt.x, CEREMONY_LIGHT.tgt.y, CEREMONY_LIGHT.tgt.z);
 
     const hand = (side: string) => anchor(skinned[0], `mixamorig${side}Hand`, side === "Left" ? 0.64 : -0.64, 1.265, 0.012); // the palm
-    return { model, root, bones, prize, medal, ribbonGeo, fill, palmL: hand("Left"), palmR: hand("Right"), mixer: new THREE.AnimationMixer(model) };
+    // the bones the reach turns (the lean, then each arm), in that order
+    const chain = ["Spine1", "Spine2", "LeftArm", "LeftForeArm", "RightArm", "RightForeArm"].map((n) => bones[`mixamorig${n}`]);
+    return { model, root, bones, chain, prize, medal, ribbonGeo, fill, palmL: hand("Left"), palmR: hand("Right"), mixer: new THREE.AnimationMixer(model) };
   }, [gltf, runner]);
 
   useEffect(() => {
@@ -282,7 +289,7 @@ export default function Coach() {
     return () => void idle.stop();
   }, [rig, idleClip]);
 
-  const worn = useRef<Anchor[] | null>(null);
+  const worn = useRef<{ pts: Anchor[]; back: Anchor } | null>(null);
   const frustum = useMemo(() => new THREE.Frustum(), []);
   const pm = useMemo(() => new THREE.Matrix4(), []);
   const sphere = useMemo(() => new THREE.Sphere(new THREE.Vector3(COACH_SPOT.x, 1, COACH_SPOT.z), 2.2), []);
@@ -296,7 +303,7 @@ export default function Coach() {
   useFrame(({ camera }, dt) => {
     const st = scene.get();
     const micro = st.mode === "story" && storyState(st.storyP).micro;
-    const { root, bones, prize, medal, ribbonGeo, fill, palmL, palmR, mixer } = rig;
+    const { root, bones, chain, prize, medal, ribbonGeo, fill, palmL, palmR, mixer } = rig;
     fill.intensity = FILL * (st.mode !== "trip" ? 0 : st.trip >= SLIDE_COUNT ? 1 : st.trip === FINISH_INDEX ? range(st.q, 0.6, 1) : 0);
     camera.updateMatrixWorld();
     frustum.setFromProjectionMatrix(pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
@@ -318,7 +325,11 @@ export default function Coach() {
 
     // her frame: where her head and neck are, which way is towards him and to his left
     const her = herRig.mesh && herRig.bones ? herRig : null;
-    if (her && !worn.current) worn.current = WORN.map(([b, x, y, z]) => anchor(her.mesh!, b, x, y, z)).filter((a): a is Anchor => !!a);
+    if (her && !worn.current) {
+      const pts = WORN.map(([b, x, y, z]) => anchor(her.mesh!, b, x, y, z));
+      const back = anchor(her.mesh!, ...CHEST_BACK);
+      if (back && pts.every(Boolean)) worn.current = { pts: pts as Anchor[], back };
+    }
     const toHim = v[0].set(COACH_SPOT.x - COACH_SPOT.her.x, 0, COACH_SPOT.z - COACH_SPOT.her.z).normalize();
     const hisLeft = v[1].set(-toHim.z, 0, toHim.x); // his left, facing her (her right)
     const head = v[2];
@@ -344,8 +355,7 @@ export default function Coach() {
 
     if (ik > 0.001) {
       const B = bones;
-      const chain = [B.mixamorigSpine1, B.mixamorigSpine2, B.mixamorigLeftArm, B.mixamorigLeftForeArm, B.mixamorigRightArm, B.mixamorigRightForeArm];
-      chain.forEach((b, i) => saved[i].copy(b.quaternion));
+      for (let i = 0; i < chain.length; i++) saved[i].copy(chain[i].quaternion);
       // lean in to her as his hands go up and over
       const lean = 0.16 * raise * (1 - 0.5 * lower);
       _q.setFromAxisAngle(v[10].copy(hisLeft), lean * 0.5);
@@ -359,8 +369,10 @@ export default function Coach() {
       reach(B.mixamorigLeftArm, B.mixamorigLeftForeArm, B.mixamorigLeftHand, wristL, poleL);
       reach(B.mixamorigRightArm, B.mixamorigRightForeArm, B.mixamorigRightHand, wristR, poleR);
       // blend the whole reach (and the lean) in and out over the animated pose
-      chain.forEach((b, i) => qIK[i].copy(b.quaternion));
-      chain.forEach((b, i) => b.quaternion.copy(saved[i]).slerp(qIK[i], ik));
+      for (let i = 0; i < chain.length; i++) {
+        qIK[i].copy(chain[i].quaternion);
+        chain[i].quaternion.copy(saved[i]).slerp(qIK[i], ik);
+      }
       B.mixamorigHips.updateMatrixWorld(true);
     }
 
@@ -376,15 +388,25 @@ export default function Coach() {
     pts[4].copy(hm).setY(hm.y - 0.25).addScaledVector(toHim, -0.04 + 0.19 * overness);
     pts[3].copy(pR).lerp(pts[4], 0.5).addScaledVector(hisLeft, -0.03).addScaledVector(toHim, 0.05 * overness);
     pts[5].copy(pL).lerp(pts[4], 0.5).addScaledVector(hisLeft, 0.03).addScaledVector(toHim, 0.05 * overness);
-    if (worn.current && worn.current.length === 6 && settle > 0) {
-      worn.current.forEach((a) => a.bone.updateWorldMatrix(true, false));
-      worn.current.forEach((a, i) => pts[i].lerp(at(a, v[15]), settle));
+    const W = worn.current;
+    if (W && settle > 0) {
+      for (let i = 0; i < W.pts.length; i++) {
+        W.pts[i].bone.updateWorldMatrix(true, false);
+        pts[i].lerp(at(W.pts[i], v[15]), settle);
+      }
     }
     layRibbon(ribbonGeo, pts);
-    // the medal hangs from the loop's lowest point, down from the two sides, facing out of the loop
+    // the medal hangs from the loop's lowest point: in his hands down from the two sides, facing out
+    // of the loop; on her, straight down and facing out from her chest
     const top = pts[4];
     const down = v[11].copy(pts[0]).add(pts[2]).multiplyScalar(0.5).sub(top).negate().normalize();
     const face = v[12].subVectors(top, pts[1]);
+    if (W && settle > 0) {
+      W.back.bone.updateWorldMatrix(true, false);
+      const out = at(W.back, v[13]).negate().add(at(W.pts[4], v[14])).setY(0).normalize();
+      down.lerp(v[14].set(0, -1, 0), settle).normalize();
+      face.normalize().lerp(out, settle);
+    }
     face.addScaledVector(down, -face.dot(down)).normalize();
     const side = v[13].crossVectors(face, down).normalize();
     mBasis.makeBasis(side, v[14].copy(down).negate(), face);
