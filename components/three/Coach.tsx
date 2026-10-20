@@ -235,14 +235,9 @@ export default function Coach() {
         m.roughness = 0.62;
         dress(m, "hair", u);
       } else {
-        m = src.clone(); // his face texture, shaded like the skin of his neck it meets
+        m = src.clone(); // his face texture, shaded like the skin of his neck it meets (its specular already matches her body's)
         m.metalness = 0;
         m.roughness = 0.82;
-        const ph = m as THREE.MeshPhysicalMaterial;
-        if (ph.isMeshPhysicalMaterial) {
-          ph.specularIntensity = 1;
-          ph.specularColor.setScalar(1);
-        }
       }
       m.envMapIntensity = 0.9;
       mesh.material = m;

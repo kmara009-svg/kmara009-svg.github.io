@@ -216,12 +216,44 @@ const body = (() => {
     const crotch = smooth(0.74, 0.8, y) * (1 - smooth(0.9, 0.95, y)) * (1 - smooth(0.012, 0.05, ax));
     const trousers = mix(0.017, 0.012, smooth(0.45, 0.8, y)) * smooth(0.12, 0.17, y) * (1 - crotch);
     const belt = smooth(0.955, 0.965, y) * (1 - smooth(0.995, 1.005, y)) * 0.004;
-    // the shorts' hem stood 3-5 mm proud of the thigh: the trouser leg widens up into it and the hem's
-    // edge comes in a little, so the two meet without a step
-    const hem = legs[i] ? 0.006 * smooth(0.66, 0.745, y) : -0.003 * (1 - smooth(0.755, 0.775, y)) * smooth(0.7, 0.74, y);
+    // the shorts' hem stood 1-5 mm proud of the thigh: its edge comes in a millimetre, the trouser leg
+    // widens to meet it just below its lower edge (y 0.744), and under it moves with it, keeping her tuck
+    const torsoHem = -0.001 * (1 - smooth(0.755, 0.775, y)) * smooth(0.7, 0.74, y);
+    const under = smooth(0.742, 0.75, y);
+    const hem = legs[i] ? 0.0015 * smooth(0.68, 0.74, y) * (1 - under) + torsoHem * under : torsoHem;
     const torsoOff = y > 0.98 ? mix(trousers, shirt, smooth(0.98, 1.0, y)) : trousers + hem;
     const off = ax > 0.545 ? 0 : mix(torsoOff + belt, sleeve, arm);
     for (let k = 0; k < 3; k++) pos[3 * i + k] += N0[3 * i + k] * off;
+  }
+  // and wherever a leg runs on under the hem it stays at least 1 mm inside it: from each leg's axis
+  // at the vertex's height, out through the vertex, to the hem
+  {
+    const hemTris = [];
+    for (let t = 0; t < I.length; t += 3) {
+      const v = [I[t], I[t + 1], I[t + 2]];
+      if (v.some((k) => legs[k]) || Math.min(...v.map((k) => P[3 * k + 1])) > 0.8 || Math.max(...v.map((k) => P[3 * k + 1])) < 0.73) continue;
+      hemTris.push(v.map((k) => at3(pos, k)));
+    }
+    let moved = 0;
+    for (let i = 0; i < n; i++) {
+      if (!legs[i] || P[3 * i + 1] < 0.742) continue;
+      const q = at3(pos, i), side = Math.sign(q[0]);
+      let ax = 0, az = 0, c = 0;
+      for (let k = 0; k < n; k++) {
+        if (!legs[k] || Math.sign(pos[3 * k]) !== side || Math.abs(pos[3 * k + 1] - q[1]) > 0.008) continue;
+        ax += pos[3 * k]; az += pos[3 * k + 2]; c++;
+      }
+      ax /= c; az /= c;
+      const r = Math.hypot(q[0] - ax, q[2] - az), d = [(q[0] - ax) / r, 0, (q[2] - az) / r];
+      let hit = Infinity;
+      for (const [a, b, cc] of hemTris) { const t = rayTri([ax, q[1], az], d, a, b, cc); if (t > 0 && t < hit) hit = t; }
+      if (hit < Infinity && r > hit - 0.001) {
+        pos[3 * i] = ax + d[0] * (hit - 0.001);
+        pos[3 * i + 2] = az + d[2] * (hit - 0.001);
+        moved++;
+      }
+    }
+    console.log(`leg tops pulled back under the hem: ${moved}`);
   }
   const nrm = vertexNormals(pos, I);
   p.getAttribute("POSITION").setArray(pos);
