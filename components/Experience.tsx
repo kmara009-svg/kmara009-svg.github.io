@@ -20,6 +20,23 @@ const StoryCanvas = dynamic(() => import("./three/StoryCanvas"), { ssr: false })
 
 type Stop = { id: string; label: string; y: number };
 
+/* the medal trip from a standstill: a brisk run in, slower through the ceremony (lib/scene
+   CEREMONY, 0.42 to 0.84 of the way), then the zoom; a monotone cubic through (t, progress, slope) */
+const MEDAL_EASE = [
+  [0, 0, 0.3],
+  [0.34, 0.42, 0.85],
+  [0.8, 0.84, 0.95],
+  [1, 1, 0],
+];
+function medalEase(t: number) {
+  const K = MEDAL_EASE;
+  let i = 0;
+  while (i < K.length - 2 && t > K[i + 1][0]) i++;
+  const [t0, p0, m0] = K[i], [t1, p1, m1] = K[i + 1];
+  const h = t1 - t0, u = Math.min(1, Math.max(0, (t - t0) / h)), u2 = u * u, u3 = u2 * u;
+  return (2 * u3 - 3 * u2 + 1) * p0 + (u3 - 2 * u2 + u) * h * m0 + (-2 * u3 + 3 * u2) * p1 + (u3 - u2) * h * m1;
+}
+
 export default function Experience() {
   const lenisRef = useRef<Lenis | null>(null);
   const stops = useRef<Stop[]>([]);
@@ -92,12 +109,18 @@ export default function Experience() {
       const to = stops.current[idx].y;
       const dist = Math.abs(to - from) / window.innerHeight;
       const trip = dist > 1.8; // a slide trip is 3.2 screens: ~6.5 s, moving from the first frame so a key press answers at once
-      if (duration >= 1.5) duration = trip ? Math.min(6.5, 2.4 + 1.4 * dist) : Math.min(3, 1.1 + 0.85 * dist);
+      // the last trip, twice as long for the medal, gets the time for it when taken on its own
+      const medal = trip && Math.abs(idx - at) === 1 && Math.max(idx, at) === stops.current.length - 1;
+      if (duration >= 1.5) duration = trip ? (medal ? Math.min(12, 2.4 + 1.5 * dist) : Math.min(6.5, 2.4 + 1.4 * dist)) : Math.min(3, 1.1 + 0.85 * dist);
       // already moving (a second press mid-trip): start the new ease at the current speed, so the
       // camera and the runner carry straight on rather than lurching
       const moving = animating.current && Math.abs(vel.current.v) > 30 && Math.sign(vel.current.v) === Math.sign(to - from);
       const m0 = moving ? Math.min(3, Math.abs((vel.current.v * duration) / (to - from || 1))) : trip ? 0.3 : 0;
-      const easing = moving || trip
+      const easing = medal && !moving
+        ? to > from
+          ? medalEase
+          : (t: number) => 1 - medalEase(1 - t)
+        : moving || trip
         ? (t: number) => {
             // cubic Hermite from 0 to 1, starting with slope m0 and coming to rest; from a standstill
             // a trip uses a gentle cosine ease with a small initial push instead

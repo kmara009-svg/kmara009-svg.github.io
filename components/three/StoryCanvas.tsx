@@ -6,6 +6,7 @@ import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Runner from "./Runner";
 import Rivals from "./Rivals";
+import Coach from "./Coach";
 import Stadium from "./Stadium";
 import Park from "./Park";
 import Skyline from "./Skyline";
@@ -14,7 +15,8 @@ import Billboards from "./Billboards";
 import { Dust } from "./Effects";
 import MicroBone, { MICRO_ORIGIN } from "./MicroBone";
 import { story, storyState, srange, range } from "@/lib/story";
-import { FINISH_INDEX, SLIDE_COUNT, TRIP_CAM, runnerPose, scene } from "@/lib/scene";
+import { CEREMONY, FINISH_INDEX, SLIDE_COUNT, TRIP_CAM, runnerPose, scene, tripQ } from "@/lib/scene";
+import { CEREMONY_VIEW, LEAVE } from "@/lib/ceremony";
 import { pointAt, relative } from "@/lib/trackPath";
 import { SIGN_FACE, signCorners, signPose } from "@/lib/signs";
 import { apply as applySlides, type Quad } from "@/lib/slideLayer";
@@ -58,6 +60,7 @@ function CameraRig() {
   const a = useMemo(() => new THREE.Vector3(), []);
   const b = useMemo(() => new THREE.Vector3(), []);
   const rel3 = useMemo(() => new THREE.Vector3(), []);
+  const c = useMemo(() => new THREE.Vector3(), []);
 
   useFrame((_, dt) => {
     camera.layers.enable(1);
@@ -121,9 +124,10 @@ function CameraRig() {
       // it, swing round behind her as she sets off, chase (widening mid-run), swing onto this
       // slide's sign as she halts, then close in until the sign exactly fills the stage, where
       // the slide grows out of it. Every phase is a function of q, so the move is continuous
-      // from the first frame of the key press and runs backwards just as well.
-      const q = st.q;
+      // from the first frame of the key press and runs backwards just as well. (The references
+      // trip holds at the end of the approach while the coach hangs the medal on her: tripQ.)
       const i = st.trip;
+      const q = tripQ(i, st.q);
       const last = i === FINISH_INDEX;
       const prevFinish = i - 1 === FINISH_INDEX;
       const C = TRIP_CAM;
@@ -140,9 +144,8 @@ function CameraRig() {
       const fitDist = (SIGN_FACE.h * size.height) / (2 * Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2) * 1080 * stageScale);
       const signView = (n: number, fit: boolean, pos: THREE.Vector3, tgt: THREE.Vector3) => {
         const sp = signPose(n);
-        const wide = n >= SLIDE_COUNT; // the references sign: she stands in front of it, so keep her in frame
-        const dist = fit ? fitDist : wide ? 9.5 : 7.5;
-        pos.set(sp.x + sp.nx * dist, fit ? SIGN_FACE.y : wide ? 2.4 : 2.1, sp.z + sp.nz * dist);
+        const dist = fit ? fitDist : 7.5;
+        pos.set(sp.x + sp.nx * dist, fit ? SIGN_FACE.y : 2.1, sp.z + sp.nz * dist);
         tgt.set(sp.x, SIGN_FACE.y, sp.z);
       };
       if (i > 1) {
@@ -185,7 +188,20 @@ function CameraRig() {
           desired.pos.lerp(a, zoomIn);
           desired.tgt.lerp(b, zoomIn);
         } else {
-          signView(i, false, a, b);
+          if (i >= SLIDE_COUNT) {
+            // the references sign: onto the coach and her beside it, easing in a little while he
+            // hangs the medal on her, then away to the sign
+            const t = srange(st.q, CEREMONY[0], CEREMONY[1]);
+            const { pos: cp, tgt: ct } = CEREMONY_VIEW;
+            b.set(ct.x, ct.y, ct.z);
+            a.set(cp.x, cp.y, cp.z).lerp(b, 0.12 * t);
+            const away = srange(st.q, LEAVE[0], LEAVE[1]);
+            if (away > 0) {
+              signView(i, false, rel3, c);
+              a.lerp(rel3, away);
+              b.lerp(c, away);
+            }
+          } else signView(i, false, a, b);
           desired.pos.lerp(a, approach);
           desired.tgt.lerp(b, approach);
           signView(i, true, a, b);
@@ -338,6 +354,7 @@ export default function StoryCanvas() {
             <Dust />
             <Runner />
             <Rivals />
+            <Coach />
             <MicroBone />
           </Suspense>
           <EffectComposer multisampling={2}>

@@ -3,12 +3,12 @@ import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Stage } from "../ui/primitives";
-import { scene, trackTrip } from "@/lib/scene";
+import { REFS_LENGTH, SLIDE_COUNT, scene, trackTrip } from "@/lib/scene";
 import { register } from "@/lib/slideLayer";
 
 gsap.registerPlugin(ScrollTrigger);
 
-export const TRIP_VH = 3.2; // each slide section is this many viewport heights tall
+export const TRIP_VH = 3.2; // each slide section is this many viewport heights tall (the references', with the medal, REFS_LENGTH times that)
 
 /* A slide reached by a "trip". The section is scroll distance only: its trigger maps the whole
    way from the previous slide's stop (the section's top entering the bottom of the screen) to
@@ -39,7 +39,7 @@ export function Slide({ id, label, index, tone = "paper", stageStyle, children }
     };
   }, [index]);
   return (
-    <section id={id} ref={section} data-label={label} data-index={index} className="slide trip" style={{ height: `${TRIP_VH * 100}vh` }}>
+    <section id={id} ref={section} data-label={label} data-index={index} className="slide trip" style={{ height: `${(index === SLIDE_COUNT ? REFS_LENGTH : 1) * TRIP_VH * 100}vh` }}>
       <div className="pointer-events-none fixed inset-0">
         <div ref={wrap} className="absolute inset-0" style={{ opacity: 0, visibility: "hidden", transform: "translateY(150vh)" }}>
           <Stage tone={tone} style={stageStyle}>
