@@ -4,11 +4,11 @@ import { useFrame, useLoader } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { useEffect, useMemo, useRef } from "react";
 import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
-import { storyState, srange, smooth, range } from "@/lib/story";
+import { storyState, srange } from "@/lib/story";
 import { XRAY_LABELS, labelEls } from "@/lib/labels";
-import { FINISH_INDEX, SLIDE_COUNT, STORY_END_D, TRIP_RUN, runnerPose, scene } from "@/lib/scene";
+import { FINISH_INDEX, runnerPose, scene } from "@/lib/scene";
 import { headingOf, pointAt } from "@/lib/trackPath";
-import { tripPose } from "@/lib/runnerPath";
+import { storyD, tripPose, tripU } from "@/lib/runnerPath";
 
 /* Rigged, textured runner (Mixamo "Michelle" from the three.js examples) driven by
    motion-captured Mixamo run, walk and idle clips retargeted onto her skeleton
@@ -17,8 +17,8 @@ import { tripPose } from "@/lib/runnerPath";
    parented to her actual rig bones, so it runs with her. Bone-local units are
    centimetres (the rig root is scaled 0.01). */
 
-const MODEL = "/models/runner.glb";
-const CLIPS = ["/models/run.json", "/models/walk.json", "/models/idle.json"];
+export const MODEL = "/models/runner.glb";
+export const CLIPS = ["/models/run.json", "/models/walk.json", "/models/idle.json"];
 useGLTF.preload(MODEL);
 
 const LIME = new THREE.Color("#c6f432");
@@ -191,16 +191,13 @@ export default function Runner() {
     const hold = st.mode === "story" ? srange(sp, 0.21, 0.25) * (1 - srange(sp, 0.4, 0.44)) : 0;
     let d: number, tx: number, tz: number, th: number;
     if (st.mode === "story") {
-      const f = sp < 0.23 ? (sp / 0.23) * 0.38 : sp < 0.42 ? 0.38 : 0.38 + ((sp - 0.42) / 0.58) * 0.62;
-      d = 34 + (STORY_END_D - 34) * f;
+      d = storyD(sp);
       const p = pointAt(d);
       tx = p.x;
       tz = p.z;
       th = headingOf(p);
     } else {
-      // the last trip veers off the track to the references sign, a longer path, so it gets more of the scroll
-      const [r0, r1] = st.trip >= SLIDE_COUNT ? [0.03, 0.78] : TRIP_RUN;
-      const t = tripPose(st.trip, smooth(range(st.q, r0, r1)));
+      const t = tripPose(st.trip, tripU(st.trip, st.q));
       d = t.d;
       tx = t.x;
       tz = t.z;

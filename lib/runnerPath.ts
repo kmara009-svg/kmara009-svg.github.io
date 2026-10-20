@@ -3,14 +3,27 @@
    the last (references) sign she veers off the track to stand in front of it, turning to face
    it as she comes to a halt. */
 import { TRACK_LENGTH, pointAt } from "./trackPath";
-import { FINISH_INDEX, SLIDE_COUNT, STORY_END_D, markerD } from "./scene";
+import { FINISH_INDEX, SLIDE_COUNT, STORY_END_D, TRIP_RUN, markerD } from "./scene";
 import { SIGN_LAT, signPose, signSide } from "./signs";
-import { clamp01, smooth, srange } from "./story";
+import { clamp01, range, smooth, srange } from "./story";
 
 export const STOP_BACK = 3.0; // she halts this far before the sign's marker, along the track
 export const STOP_LAT = SIGN_LAT - 1.7; // and 1.7 m in front of the sign face
 const LEAVE_M = 10; // metres over which she merges back onto lane 1
 const ARRIVE_M = 16; // metres over which she veers out to the sign
+
+/* her distance along lane 1 at story progress sp: she runs, holds still while the X-ray is on, runs on */
+export function storyD(sp: number) {
+  const f = sp < 0.23 ? (sp / 0.23) * 0.38 : sp < 0.42 ? 0.38 : 0.38 + ((sp - 0.42) / 0.58) * 0.62;
+  return 34 + (STORY_END_D - 34) * f;
+}
+
+/* how far through trip i's run she is at trip progress q (0..1, eased); the last trip veers off
+   the track to the references sign, a longer path, so it gets more of the scroll */
+export function tripU(i: number, q: number) {
+  const [r0, r1] = i >= SLIDE_COUNT ? [0.03, 0.78] : TRIP_RUN;
+  return smooth(range(q, r0, r1));
+}
 
 export type Stop = { d: number; lat: number };
 /* where she stands for slide i (0 = the end of the story) */
