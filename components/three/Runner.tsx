@@ -6,9 +6,10 @@ import { useEffect, useMemo, useRef } from "react";
 import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
 import { storyState, srange } from "@/lib/story";
 import { XRAY_LABELS, labelEls } from "@/lib/labels";
-import { FINISH_INDEX, runnerPose, scene } from "@/lib/scene";
+import { FINISH_INDEX, SLIDE_COUNT, runnerPose, scene } from "@/lib/scene";
 import { headingOf, pointAt } from "@/lib/trackPath";
-import { storyD, tripPose, tripU } from "@/lib/runnerPath";
+import { lerpAngle, storyD, tripPose, tripU } from "@/lib/runnerPath";
+import { HER_TURN, MEDAL, ceremonyK } from "@/lib/ceremony";
 
 /* Rigged, textured runner (Mixamo "Michelle" from the three.js examples) driven by
    motion-captured Mixamo run, walk and idle clips retargeted onto her skeleton
@@ -30,6 +31,9 @@ const UP = new THREE.Vector3(0, 1, 0);
 // writing depth so they hide one another as when opaque (otherwise the face, drawn last, covers the hair and the far
 // side of the headband shows through her mouth), and they draw in one pass though double-sided.
 const HEAD_PARTS = new Set(["Face", "Hair", "Headband", "Gold"]);
+
+/* her rig, for what hangs on her (the medal): set once her model is built */
+export const herRig: { mesh: THREE.SkinnedMesh | null; bones: Record<string, THREE.Bone> | null } = { mesh: null, bones: null };
 
 type BodyMat = THREE.MeshStandardMaterial & { userData: { base?: THREE.Color; head?: boolean } };
 
@@ -81,7 +85,7 @@ export default function Runner() {
   const clips = useMemo(() => clipTexts.map((t) => THREE.AnimationClip.parse(JSON.parse(t))), [clipTexts]);
   const mats = useMemo(makeBoneMaterials, []);
 
-  const { model, bodyMats, bones, mixer } = useMemo(() => {
+  const { model, bodyMats, bones, mixer, mesh } = useMemo(() => {
     const model = SkeletonUtils.clone(gltf.scene) as THREE.Group;
     const bodyMats: BodyMat[] = [];
     const bones: Record<string, THREE.Bone> = {};
@@ -157,8 +161,17 @@ export default function Runner() {
     blob(bones, "mixamorigHead", [0, 9.0, -0.5], [6.4, 7.4, 7.2], bone); // cranium, kept inside the head so it never shows over her face
 
     const mixer = new THREE.AnimationMixer(model);
-    return { model, bodyMats, bones, mixer };
+    return { model, bodyMats, bones, mixer, mesh: skinned[0] };
   }, [gltf, mats]);
+
+  useEffect(() => {
+    herRig.mesh = mesh;
+    herRig.bones = bones;
+    return () => {
+      herRig.mesh = null;
+      herRig.bones = null;
+    };
+  }, [mesh, bones]);
 
   const actions = useRef<{ run: THREE.AnimationAction; walk: THREE.AnimationAction; idle: THREE.AnimationAction } | null>(null);
   useEffect(() => {
@@ -201,7 +214,8 @@ export default function Runner() {
       d = t.d;
       tx = t.x;
       tz = t.z;
-      th = t.heading;
+      // with the medal on, she turns to the camera with the coach
+      th = st.trip >= SLIDE_COUNT ? lerpAngle(t.heading, HER_TURN, srange(ceremonyK(st), ...MEDAL.turn)) : t.heading;
     }
     const dd = Math.min(dt, 0.1);
     const ps = pose.current;

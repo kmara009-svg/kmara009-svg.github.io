@@ -5,9 +5,10 @@
    The 3D scene calls apply() every frame with a projector (after the camera has moved, so the
    slide and the sign never drift apart); without WebGL a ticker applies plain fades instead. */
 import gsap from "gsap";
-import { FINISH_INDEX, scene, type SceneState } from "./scene";
+import { FINISH_INDEX, scene, tripQ, type SceneState } from "./scene";
 
-/* scroll windows, in trip progress q (0 = leaving the previous slide's stop, 1 = at this slide) */
+/* scroll windows, in trip progress q (0 = leaving the previous slide's stop, 1 = at this slide; on
+   the shared trip timeline, lib/scene tripQ) */
 export const ARRIVE_Q: [number, number] = [0.86, 0.985]; // fades in while the camera zooms onto the sign
 export const FINISH_ARRIVE_Q: [number, number] = [0.9, 0.985]; // the finish-line slide has no sign
 export const LEAVE_Q = 0.06; // fades out while the camera backs off the sign
@@ -25,9 +26,9 @@ export function presence(i: number, st: SceneState) {
   if (transit && !transit.has(i)) return 0;
   if (st.trip === i) {
     const [a, b] = i === FINISH_INDEX ? FINISH_ARRIVE_Q : ARRIVE_Q;
-    return sstep(a, b, st.q);
+    return sstep(a, b, tripQ(i, st.q));
   }
-  if (st.trip === i + 1) return 1 - sstep(0, LEAVE_Q, st.q);
+  if (st.trip === i + 1) return 1 - sstep(0, LEAVE_Q, tripQ(st.trip, st.q));
   return 0;
 }
 

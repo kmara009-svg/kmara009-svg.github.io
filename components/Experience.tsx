@@ -7,7 +7,7 @@ import dynamic from "next/dynamic";
 import ScrollStory from "./ScrollStory";
 import ProgressTrack from "./ProgressTrack";
 import { BEATS } from "@/lib/story";
-import { scene } from "@/lib/scene";
+import { CEREMONY, SLIDE_COUNT, refsHold, scene } from "@/lib/scene";
 import { setTransit } from "@/lib/slideLayer";
 import { IntroSections } from "./sections/Intro";
 import { CareSections } from "./sections/Care";
@@ -19,6 +19,30 @@ gsap.registerPlugin(ScrollTrigger);
 const StoryCanvas = dynamic(() => import("./three/StoryCanvas"), { ssr: false });
 
 type Stop = { id: string; label: string; y: number };
+
+/* the medal trip from a standstill: a brisk run in, slower through the ceremony (lib/scene
+   CEREMONY, 0.42 to 0.84 of the way), then the zoom; and back, out of the zoom, through the
+   ceremony, the run back. Both set off at once and come to rest. Monotone cubics through
+   (t, progress, slope). */
+const MEDAL_IN = [
+  [0, 0, 0.3],
+  [0.34, 0.42, 0.85],
+  [0.8, 0.84, 0.95],
+  [1, 1, 0],
+];
+const MEDAL_OUT = [
+  [0, 0, 0.3],
+  [0.2, 0.16, 0.95],
+  [0.66, 0.58, 0.85],
+  [1, 1, 0],
+];
+function medalEase(K: number[][], t: number) {
+  let i = 0;
+  while (i < K.length - 2 && t > K[i + 1][0]) i++;
+  const [t0, p0, m0] = K[i], [t1, p1, m1] = K[i + 1];
+  const h = t1 - t0, u = Math.min(1, Math.max(0, (t - t0) / h)), u2 = u * u, u3 = u2 * u;
+  return (2 * u3 - 3 * u2 + 1) * p0 + (u3 - 2 * u2 + u) * h * m0 + (-2 * u3 + 3 * u2) * p1 + (u3 - u2) * h * m1;
+}
 
 export default function Experience() {
   const lenisRef = useRef<Lenis | null>(null);
@@ -76,8 +100,9 @@ export default function Experience() {
      pick up at the speed the page is already moving instead of restarting from a standstill */
   const vel = useRef({ v: 0, y: 0, t: 0 });
   const dest = useRef(0); // the stop the current move is heading for
+  const soft = useRef(false); // the current move is a long settle that wheel or touch input may take over
   const goTo = useCallback(
-    (i: number, duration = 1.5) => {
+    (i: number, duration = 1.5, lock = true) => {
       const lenis = lenisRef.current;
       if (!lenis || !stops.current.length) return;
       const idx = Math.max(0, Math.min(stops.current.length - 1, i));
@@ -92,12 +117,16 @@ export default function Experience() {
       const to = stops.current[idx].y;
       const dist = Math.abs(to - from) / window.innerHeight;
       const trip = dist > 1.8; // a slide trip is 3.2 screens: ~6.5 s, moving from the first frame so a key press answers at once
-      if (duration >= 1.5) duration = trip ? Math.min(6.5, 2.4 + 1.4 * dist) : Math.min(3, 1.1 + 0.85 * dist);
+      // the last trip, twice as long for the medal, gets the time for it when taken on its own
+      const medal = trip && onStop && refsHold() && Math.abs(idx - at) === 1 && Math.max(idx, at) === stops.current.length - 1;
+      if (duration >= 1.5) duration = trip ? (medal ? Math.min(12, 2.4 + 1.5 * dist) : Math.min(6.5, 2.4 + 1.4 * dist)) : Math.min(3, 1.1 + 0.85 * dist);
       // already moving (a second press mid-trip): start the new ease at the current speed, so the
       // camera and the runner carry straight on rather than lurching
       const moving = animating.current && Math.abs(vel.current.v) > 30 && Math.sign(vel.current.v) === Math.sign(to - from);
       const m0 = moving ? Math.min(3, Math.abs((vel.current.v * duration) / (to - from || 1))) : trip ? 0.3 : 0;
-      const easing = moving || trip
+      const easing = medal && !moving
+        ? (t: number) => medalEase(to > from ? MEDAL_IN : MEDAL_OUT, t)
+        : moving || trip
         ? (t: number) => {
             // cubic Hermite from 0 to 1, starting with slope m0 and coming to rest; from a standstill
             // a trip uses a gentle cosine ease with a small initial push instead
@@ -107,13 +136,15 @@ export default function Experience() {
           }
         : (t: number) => 1 - Math.pow(1 - t, 3);
       animating.current = true;
+      soft.current = !lock;
       lenis.scrollTo(to, {
         duration,
         easing,
-        lock: true,
+        lock,
         force: true,
         onComplete: () => {
           animating.current = false;
+          soft.current = false;
           setTransit(null);
         },
       });
@@ -129,6 +160,35 @@ export default function Experience() {
     let snapTimer: number | undefined;
     const noSnap = new URLSearchParams(window.location.search).get("nosnap") === "1";
     let lastP = -1;
+    // wheel or touch input takes over a long settle: stop it where it is and let the input scroll on
+    // from there (only input Lenis itself acts on: not pinch zoom, sideways swipes, or the stale
+    // delta a lifted finger reports)
+    lenis.on("virtual-scroll", ({ deltaY, event }: { deltaY: number; event: Event }) => {
+      if (!soft.current || !animating.current || deltaY === 0 || (event as WheelEvent).ctrlKey || event.type === "touchend") return;
+      animating.current = false;
+      soft.current = false;
+      setTransit(null);
+      lenis.stop(); // (stopping and starting again resets the settle's target to where the page is)
+      lenis.start();
+    });
+    const settle = () => {
+      if (animating.current || noSnap) return;
+      // never under a resting finger: wait for it to lift
+      if (lenis.isTouching) {
+        snapTimer = window.setTimeout(settle, 260);
+        return;
+      }
+      let k = nearest(lenis.scroll);
+      // once the medal ceremony has begun, a forward scroll settles on through it to the references
+      // rather than back to the finish line
+      const st = scene.get();
+      if (vel.current.v >= 0 && st.mode === "trip" && st.trip === SLIDE_COUNT && refsHold() && st.q >= CEREMONY[0]) k = stops.current.length - 1;
+      const d = stops.current[k] ? Math.abs(stops.current[k].y - lenis.scroll) : 0;
+      // a short settle onto the stop; from deep in the long last section it goes at a trip's pace
+      // (so the ceremony plays rather than flashes by) and gives way to the next wheel or touch input
+      const far = d > 1.8 * window.innerHeight;
+      if (d > 3) goTo(k, far ? undefined : 0.8, !far);
+    };
     lenis.on("scroll", (e: Lenis) => {
       ScrollTrigger.update();
       scene.resolve(e.scroll);
@@ -148,11 +208,7 @@ export default function Experience() {
       const idx = nearest(e.scroll);
       setCurrent((c) => (c === idx ? c : idx));
       window.clearTimeout(snapTimer);
-      snapTimer = window.setTimeout(() => {
-        if (animating.current || noSnap) return;
-        const target = stops.current[nearest(lenis.scroll)];
-        if (target && Math.abs(target.y - lenis.scroll) > 3) goTo(nearest(lenis.scroll), 0.8);
-      }, 260);
+      snapTimer = window.setTimeout(settle, 260);
     });
     const tick = (t: number) => lenis.raf(t * 1000);
     gsap.ticker.add(tick);

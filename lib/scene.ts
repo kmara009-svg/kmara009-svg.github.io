@@ -22,6 +22,29 @@ export const TRIP_CAM = {
   zoom: [0.84, 1] as [number, number], // close in until the sign fills the stage (to the very end, so a step back moves at once)
 };
 
+/* The references trip is REFS_LENGTH times as long as the others (its section is that much taller):
+   it runs as any trip up to the end of the camera's approach, holds there while the coach hangs
+   the medal on her (CEREMONY), then closes in on the sign over the rest. tripQ maps a trip's q onto
+   the shared timeline above, so her run and the camera's moves keep their scroll distances. */
+export const REFS_LENGTH = 2;
+export const CEREMONY: [number, number] = [TRIP_CAM.approach[1] / REFS_LENGTH, TRIP_CAM.approach[1]];
+/* the extra length is the 3D ceremony's; without the 3D scene (no WebGL: the static fallback) the
+   references trip is an ordinary one again, its section back to one trip's height (the
+   --refs-length the Slide section reads; the resize makes the page re-measure its stops) */
+let hold = true;
+export const refsHold = () => hold;
+export function dropRefsHold() {
+  if (!hold) return;
+  hold = false;
+  document.documentElement.style.setProperty("--refs-length", "1");
+  window.dispatchEvent(new Event("resize"));
+}
+export function tripQ(i: number, q: number) {
+  if (i < SLIDE_COUNT || !hold) return q;
+  const [c0, c1] = CEREMONY;
+  return q < c0 ? (q / c0) * c1 : q < c1 ? c1 : q;
+}
+
 export type SceneState = {
   mode: "story" | "trip";
   storyP: number; // 0..1 within the pinned story
