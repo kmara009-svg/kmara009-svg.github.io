@@ -5,17 +5,18 @@ import { useGLTF } from "@react-three/drei";
 import { useEffect, useMemo, useRef } from "react";
 import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
 import { CLIPS, MODEL } from "./Runner";
-import { FINISH_SETTLE, RIVALS, finishRun, hasFinished, laneSpot, rivalTarget } from "@/lib/race";
+import { FINISH_CROSS_Q, FINISH_SETTLE, RIVALS, finishRun, hasFinished, laneSpot, rivalTarget } from "@/lib/race";
+import { storyD, tripPose, tripU } from "@/lib/runnerPath";
 import { FINISH_INDEX, scene } from "@/lib/scene";
-import { srange, storyState } from "@/lib/story";
+import { range, srange, storyState } from "@/lib/story";
 
-/* Her four rivals: the same rigged model (a lighter copy, public/models/rival.glb, made by
-   scripts/model/rival-lod.mjs) in her materials, and the same mocap run, walk and idle clips, each
-   with her own skin tone, hair colour, kit and headband, recoloured in the shader from the one
-   shared texture set (a mask of skin, light fabric, dark fabric and shoe accents is made from the
-   body texture once). Each runs in her own lane where lib/race puts her, and is skipped entirely
-   when out of view. */
+/* Her four rivals: the same rigged model (a lighter copy, public/models/rival.glb) in her
+   materials, and the same mocap run, walk and idle clips, each with her own skin tone, hair
+   colour, kit and headband, recoloured in the shader from her textures with a kit mask
+   (public/models/rival-kit.png; both made by scripts/model/rival-lod.mjs). Each runs in her own
+   lane where lib/race puts her, and is skipped entirely when out of view. */
 const RIVAL_MODEL = "/models/rival.glb";
+const KIT_MASK = "/models/rival-kit.png";
 useGLTF.preload(RIVAL_MODEL);
 
 type Look = { skin: string; hair: string | null; top: string; shorts: string; shoes: string; band: number; height: number };
@@ -27,74 +28,19 @@ const LOOKS: Look[] = [
 ];
 const SKIN_LUMA = 0.0605; // linear luminance of her painted skin tone (#613d26), the reference for every recolour
 
-/* where the body texture is skin (r), top fabric (g), shorts fabric (b) and shoe accent (a): by
-   colour, and by where on her the texel is worn (from the body mesh's uvs and bind-pose heights),
-   so the white and black of her shoes stay as they are */
-function kitMask(img: CanvasImageSource, body: THREE.BufferGeometry) {
-  const N = 512;
-  const canvas = (draw: (g: CanvasRenderingContext2D) => void) => {
-    const c = document.createElement("canvas");
-    c.width = c.height = N;
-    const g = c.getContext("2d", { willReadFrequently: true })!;
-    draw(g);
-    return g.getImageData(0, 0, N, N).data;
-  };
-  const col = canvas((g) => g.drawImage(img, 0, 0, N, N));
-  // zones: 1 feet (below 14 cm), 2 legs and shorts, 3 the upper body (above the waistband)
-  const pos = body.attributes.position, uv = body.attributes.uv, index = body.index;
-  const zone = canvas((g) => {
-    g.lineWidth = 1.5;
-    const n = index ? index.count : pos.count;
-    for (let t = 0; t < n; t += 3) {
-      const v = [0, 1, 2].map((k) => (index ? index.getX(t + k) : t + k));
-      const y = (pos.getY(v[0]) + pos.getY(v[1]) + pos.getY(v[2])) / 3;
-      g.fillStyle = g.strokeStyle = `rgb(${(y < 0.14 ? 1 : y < 1.02 ? 2 : 3) * 80},0,0)`;
-      g.beginPath();
-      g.moveTo(uv.getX(v[0]) * N, uv.getY(v[0]) * N);
-      g.lineTo(uv.getX(v[1]) * N, uv.getY(v[1]) * N);
-      g.lineTo(uv.getX(v[2]) * N, uv.getY(v[2]) * N);
-      g.closePath();
-      g.fill();
-      g.stroke();
-    }
-  });
-  const out = new Uint8Array(N * N * 4);
-  for (let i = 0; i < out.length; i += 4) {
-    const r = col[i], gg = col[i + 1], b = col[i + 2], z = Math.round(zone[i] / 80);
-    const mx = Math.max(r, gg, b), mn = Math.min(r, gg, b);
-    const v = mx / 255, s = mx ? (mx - mn) / mx : 0;
-    let hue = 0;
-    if (mx !== mn) {
-      if (mx === r) hue = (60 * (gg - b)) / (mx - mn);
-      else if (mx === gg) hue = 120 + (60 * (b - r)) / (mx - mn);
-      else hue = 240 + (60 * (r - gg)) / (mx - mn);
-      if (hue < 0) hue += 360;
-    }
-    const lime = gg > 130 && gg > r * 1.05 && b < 120 && s > 0.45;
-    const skin = !lime && hue >= 6 && hue <= 45 && s >= 0.22 && s <= 0.85 && v >= 0.12 && v <= 0.92;
-    out[i] = skin ? 255 : 0;
-    out[i + 1] = z === 3 && !lime && !skin && s < 0.16 && v > 0.42 ? 255 : 0;
-    out[i + 2] = z === 2 && !lime && !skin && v < 0.3 ? 255 : 0;
-    out[i + 3] = lime ? 255 : 0;
-  }
-  const t = new THREE.DataTexture(out, N, N, THREE.RGBAFormat);
-  t.flipY = false; // glTF texture orientation: uv (0, 0) is the image's first row, as drawn here
-  t.magFilter = THREE.LinearFilter;
-  t.minFilter = THREE.LinearMipmapLinearFilter;
-  t.generateMipmaps = true;
-  t.needsUpdate = true;
-  return t;
-}
-
+// the kit mask: skin red, top green, shorts blue, the shoes' accents white (all three, so a
+// filtered blend of any two still splits cleanly)
 const BODY_GLSL = /* glsl */ `
 {
-  vec4 km = texture2D(uKit, vMapUv);
+  vec3 km = texture2D(uKit, vMapUv).rgb;
+  float accent = min(km.r, min(km.g, km.b));
+  km -= accent;
   vec3 c = diffuseColor.rgb;
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
   c = mix(c, uSkin * (l / ${SKIN_LUMA}), km.r);
   c = mix(c, uTop * min(l / 0.7, 1.15), km.g);
   c = mix(c, uShorts * clamp(l / 0.012, 0.5, 1.8), km.b);
-  c = mix(c, uShoes * min(l / 0.6, 1.2), km.a);
+  c = mix(c, uShoes * min(l / 0.6, 1.2), accent);
   diffuseColor.rgb = c;
 }`;
 // the face texture: only texels close to her painted skin tone, so eyes, brows, lashes and lips stay
@@ -144,7 +90,7 @@ type Rival = {
   root: THREE.Group;
   mixer: THREE.AnimationMixer;
   actions: { run: THREE.AnimationAction; walk: THREE.AnimationAction; idle: THREE.AnimationAction } | null;
-  pose: { x: number; z: number; h: number; speed: number; back: number; wr: number; ww: number; wi: number; init: boolean };
+  pose: { x: number; z: number; h: number; gap: number; speed: number; back: number; wr: number; ww: number; wi: number; init: boolean };
 };
 
 export default function Rivals() {
@@ -152,16 +98,13 @@ export default function Rivals() {
   const gltf = useGLTF(RIVAL_MODEL);
   const clipTexts = useLoader(THREE.FileLoader, CLIPS) as unknown as string[];
   const clips = useMemo(() => clipTexts.map((t) => THREE.AnimationClip.parse(JSON.parse(t))), [clipTexts]);
+  const kitTex = useLoader(THREE.TextureLoader, KIT_MASK);
 
   const rivals = useMemo<Rival[]>(() => {
     const dress = runner.materials as Record<string, THREE.MeshStandardMaterial>;
-    let bodyGeo: THREE.BufferGeometry | null = null;
-    runner.scene.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (m.isMesh && (m.material as THREE.Material).name === "Ch03_Body") bodyGeo = m.geometry;
-    });
-    const img = dress.Ch03_Body?.map?.image as CanvasImageSource | undefined;
-    const kit = img && bodyGeo ? kitMask(img, bodyGeo) : null;
+    const kit = kitTex;
+    kit.flipY = false; // glTF texture orientation, like the body texture it maps onto
+    kit.needsUpdate = true;
     return LOOKS.map((look) => {
       const model = SkeletonUtils.clone(gltf.scene) as THREE.Group;
       const skinned: THREE.SkinnedMesh[] = [];
@@ -175,18 +118,18 @@ export default function Rivals() {
         if (!/gold/i.test(src.name)) m.metalness = Math.min(m.metalness, 0.25);
         m.envMapIntensity = 0.9;
         const kind = src.name === "Ch03_Body" ? "body" : src.name === "Face" ? "face" : src.name === "Hair" ? "hair" : src.name === "Headband" ? "band" : "";
-        if (kind && kit) recolour(m, kind, look, kit);
+        if (kind) recolour(m, kind, look, kit);
         mesh.material = m;
-        mesh.castShadow = kind === "body"; // one shadow caster each: the head parts add nothing at shadow-map size
+        mesh.castShadow = !/gold/i.test(src.name); // as hers: all but the studs, which are far smaller than a shadow texel
       });
       for (const m of skinned.slice(1)) m.bind(skinned[0].skeleton, m.bindMatrix);
       model.scale.setScalar(look.height);
       const root = new THREE.Group();
-      root.add(model); // visible at first, so the scene's warm-up compile (Billboards) builds their shaders too
-
-      return { root, mixer: new THREE.AnimationMixer(model), actions: null, pose: { x: 0, z: 0, h: 0, speed: 0, back: 0, wr: 1, ww: 0, wi: 0, init: false } };
+      root.add(model);
+      root.visible = false; // until the first frame has placed her
+      return { root, mixer: new THREE.AnimationMixer(model), actions: null, pose: { x: 0, z: 0, h: 0, gap: 0, speed: 0, back: 0, wr: 1, ww: 0, wi: 0, init: false } };
     });
-  }, [gltf, runner]);
+  }, [gltf, runner, kitTex]);
 
   useEffect(() => {
     rivals.forEach((rv, r) => {
@@ -212,10 +155,12 @@ export default function Rivals() {
     const st = scene.get();
     const micro = st.mode === "story" && storyState(st.storyP).micro;
     const dd = Math.min(dt, 0.1);
-    // the run-in clock: on once she has crossed; scrubbing back before the line runs it back, and
-    // anywhere else in the deck it is simply reset (the rivals are elsewhere, out of view, by then)
-    const ft = finishT.current;
-    finishT.current = hasFinished(st) ? Math.min(ft + dd, FINISH_SETTLE) : st.mode === "trip" && st.trip === FINISH_INDEX ? Math.max(0, ft - 3 * dd) : 0;
+    // the run-in clock: real time once she has crossed, but on the finish slide never further on than
+    // the scroll is past the line, so stepping back winds it back while she still stands on the line
+    // and the rivals are behind her again when she leaves it
+    const cap = st.mode === "trip" && st.trip === FINISH_INDEX ? FINISH_SETTLE * range(st.q, FINISH_CROSS_Q, 1) : FINISH_SETTLE;
+    finishT.current = hasFinished(st) ? Math.min(finishT.current + dd, cap) : 0;
+    const herD = st.mode === "story" ? storyD(st.storyP) : tripPose(st.trip, tripU(st.trip, st.q)).d;
     camera.updateMatrixWorld();
     frustum.setFromProjectionMatrix(pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
     const cam = camera.position;
@@ -224,12 +169,20 @@ export default function Rivals() {
     rivals.forEach((rv, r) => {
       const plan = RIVALS[r];
       const tg = rivalTarget(r, st);
-      const d = tg.d + finishRun(r, finishT.current);
-      const spot = laneSpot(d, plan.lane);
-      // smoothed like hers, so the motion stays even whatever the scroll does; a jump (made while
-      // the camera is elsewhere) is taken at once
       const ps = rv.pose;
-      if (!ps.init || Math.hypot(spot.x - ps.x, spot.z - ps.z) > 6) {
+      let d = tg.d + finishRun(r, finishT.current);
+      // a planned change of place relative to her (lib/race moves a rival while the camera is on a
+      // sign; the story hands over under the bone section) is taken in one step, but only once she
+      // is out of view, so a camera still catching up never sees her vanish; until then she keeps
+      // her gap. Anything else is smoothed exactly like her, however fast the deck moves.
+      let snap = !ps.init;
+      if (ps.init && Math.abs(d - herD - ps.gap) > 7) {
+        if (rv.root.visible) d = herD + ps.gap;
+        else snap = true;
+      }
+      ps.gap = d - herD;
+      const spot = laneSpot(d, plan.lane);
+      if (snap) {
         ps.x = spot.x;
         ps.z = spot.z;
         ps.h = spot.heading;

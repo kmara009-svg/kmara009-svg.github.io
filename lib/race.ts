@@ -55,9 +55,10 @@ export const RIVALS: RivalPlan[] = [
 const LINE = TRACK_LENGTH; // the finish line, one lap on from the start of the story
 const HIDE_Q = 0.92; // in a trip past this the camera is on the sign: a rival may move unseen
 const FINISH_RUN: [number, number] = [0.05, 0.7]; // the finish trip's run window (her TRIP_RUN)
+export const FINISH_CROSS_Q = FINISH_RUN[1]; // she is on the line from here
 /* the scroll state from which she has crossed the line: from here the rivals finish in real time */
-export const hasFinished = (st: SceneState) => st.mode === "trip" && (st.trip > FINISH_INDEX || (st.trip === FINISH_INDEX && st.q >= FINISH_RUN[1]));
-export const FINISH_SETTLE = 8; // seconds by which every rival has pulled up
+export const hasFinished = (st: SceneState) => st.mode === "trip" && (st.trip > FINISH_INDEX || (st.trip === FINISH_INDEX && st.q >= FINISH_CROSS_Q));
+export const FINISH_SETTLE = 5.5; // seconds by which every rival has pulled up (the longest run-in, lane 2's, takes 5.4)
 
 export type RivalTarget = { d: number; finished: boolean; treadmill: boolean };
 /* rival r's distance along lane 1 for scroll state st (before any run-in after the finish) */
