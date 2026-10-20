@@ -57,8 +57,8 @@ const BODY_GLSL = /* glsl */ `
 #else
   float th = atan(p.x, p.z - ${NECK.zc});
   float neck = ${NECK.y} - ${NECK.v} * (1.0 - smoothstep(0.25, 0.75, abs(th)));
-  float isShirt = smoothstep(0.965, 0.968, p.y) * (1.0 - smoothstep(neck - 0.002, neck + 0.002, p.y)) * (1.0 - smoothstep(0.535, 0.538, ax));
   float isBelt = smoothstep(0.962, 0.965, p.y) * (1.0 - smoothstep(0.994, 0.997, p.y));
+  float isShirt = smoothstep(0.965, 0.968, p.y) * (1.0 - isBelt) * (1.0 - smoothstep(neck - 0.002, neck + 0.002, p.y)) * (1.0 - smoothstep(0.535, 0.538, ax));
   float isLegs = smoothstep(0.122, 0.128, p.y) * (1.0 - isBelt) * (1.0 - smoothstep(0.995, 0.998, p.y)) * step(ax, 0.3);
   float buckle = isBelt * (1.0 - smoothstep(0.016, 0.019, ax)) * step(0.0, p.z) * step(0.968, p.y) * step(p.y, 0.991);
   vec3 c = skin;
@@ -235,8 +235,14 @@ export default function Coach() {
         m.roughness = 0.62;
         dress(m, "hair", u);
       } else {
-        m = src.clone(); // his face texture
-        m.metalness = 0.05;
+        m = src.clone(); // his face texture, shaded like the skin of his neck it meets
+        m.metalness = 0;
+        m.roughness = 0.82;
+        const ph = m as THREE.MeshPhysicalMaterial;
+        if (ph.isMeshPhysicalMaterial) {
+          ph.specularIntensity = 1;
+          ph.specularColor.setScalar(1);
+        }
       }
       m.envMapIntensity = 0.9;
       mesh.material = m;
@@ -270,10 +276,12 @@ export default function Coach() {
     prize.add(medal, ribbon);
     prize.visible = false;
 
-    // a floodlight on the two of them for the ceremony (always in the scene, so the lights never
-    // change and no shader is rebuilt: it is only dimmed to nothing away from the last sign)
+    // a floodlight on the two of them for the ceremony, switched on only for the last two trips (the
+    // rest of the lap does not pay for it; both light states are compiled up front, so switching
+    // only swaps programs)
     const fill = new THREE.SpotLight("#fff2e2", 0, 0, 0.36, 0.85, 2);
     fill.position.set(CEREMONY_LIGHT.pos.x, CEREMONY_LIGHT.pos.y, CEREMONY_LIGHT.pos.z);
+    fill.userData.toggled = true; // Billboards' warm-up builds every program with it on and off
     fill.target.position.set(CEREMONY_LIGHT.tgt.x, CEREMONY_LIGHT.tgt.y, CEREMONY_LIGHT.tgt.z);
 
     const hand = (side: string) => anchor(skinned[0], `mixamorig${side}Hand`, side === "Left" ? 0.64 : -0.64, 1.265, 0.012); // the palm
@@ -304,7 +312,8 @@ export default function Coach() {
     const st = scene.get();
     const micro = st.mode === "story" && storyState(st.storyP).micro;
     const { root, bones, chain, prize, medal, ribbonGeo, fill, palmL, palmR, mixer } = rig;
-    fill.intensity = FILL * (st.mode !== "trip" ? 0 : st.trip >= SLIDE_COUNT ? 1 : st.trip === FINISH_INDEX ? range(st.q, 0.6, 1) : 0);
+    fill.visible = st.mode === "trip" && st.trip >= FINISH_INDEX;
+    fill.intensity = FILL * (!fill.visible ? 0 : st.trip >= SLIDE_COUNT ? 1 : range(st.q, 0.6, 1));
     camera.updateMatrixWorld();
     frustum.setFromProjectionMatrix(pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
     const near = camera.position.distanceTo(sphere.center);

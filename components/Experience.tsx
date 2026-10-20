@@ -7,7 +7,7 @@ import dynamic from "next/dynamic";
 import ScrollStory from "./ScrollStory";
 import ProgressTrack from "./ProgressTrack";
 import { BEATS } from "@/lib/story";
-import { refsHold, scene } from "@/lib/scene";
+import { CEREMONY, SLIDE_COUNT, refsHold, scene } from "@/lib/scene";
 import { setTransit } from "@/lib/slideLayer";
 import { IntroSections } from "./sections/Intro";
 import { CareSections } from "./sections/Care";
@@ -100,8 +100,9 @@ export default function Experience() {
      pick up at the speed the page is already moving instead of restarting from a standstill */
   const vel = useRef({ v: 0, y: 0, t: 0 });
   const dest = useRef(0); // the stop the current move is heading for
+  const soft = useRef(false); // the current move is a long settle that wheel or touch input may take over
   const goTo = useCallback(
-    (i: number, duration = 1.5) => {
+    (i: number, duration = 1.5, lock = true) => {
       const lenis = lenisRef.current;
       if (!lenis || !stops.current.length) return;
       const idx = Math.max(0, Math.min(stops.current.length - 1, i));
@@ -117,7 +118,7 @@ export default function Experience() {
       const dist = Math.abs(to - from) / window.innerHeight;
       const trip = dist > 1.8; // a slide trip is 3.2 screens: ~6.5 s, moving from the first frame so a key press answers at once
       // the last trip, twice as long for the medal, gets the time for it when taken on its own
-      const medal = trip && refsHold() && Math.abs(idx - at) === 1 && Math.max(idx, at) === stops.current.length - 1;
+      const medal = trip && onStop && refsHold() && Math.abs(idx - at) === 1 && Math.max(idx, at) === stops.current.length - 1;
       if (duration >= 1.5) duration = trip ? (medal ? Math.min(12, 2.4 + 1.5 * dist) : Math.min(6.5, 2.4 + 1.4 * dist)) : Math.min(3, 1.1 + 0.85 * dist);
       // already moving (a second press mid-trip): start the new ease at the current speed, so the
       // camera and the runner carry straight on rather than lurching
@@ -135,13 +136,15 @@ export default function Experience() {
           }
         : (t: number) => 1 - Math.pow(1 - t, 3);
       animating.current = true;
+      soft.current = !lock;
       lenis.scrollTo(to, {
         duration,
         easing,
-        lock: true,
+        lock,
         force: true,
         onComplete: () => {
           animating.current = false;
+          soft.current = false;
           setTransit(null);
         },
       });
@@ -157,6 +160,14 @@ export default function Experience() {
     let snapTimer: number | undefined;
     const noSnap = new URLSearchParams(window.location.search).get("nosnap") === "1";
     let lastP = -1;
+    // wheel or touch input takes over a long settle: stop it where it is and scroll on from there
+    lenis.on("virtual-scroll", ({ deltaX, deltaY }: { deltaX: number; deltaY: number }) => {
+      if (!soft.current || !animating.current || (deltaX === 0 && deltaY === 0)) return;
+      animating.current = false;
+      soft.current = false;
+      setTransit(null);
+      lenis.scrollTo(lenis.animatedScroll, { immediate: true, force: true });
+    });
     lenis.on("scroll", (e: Lenis) => {
       ScrollTrigger.update();
       scene.resolve(e.scroll);
@@ -178,10 +189,16 @@ export default function Experience() {
       window.clearTimeout(snapTimer);
       snapTimer = window.setTimeout(() => {
         if (animating.current || noSnap) return;
-        const target = stops.current[nearest(lenis.scroll)];
-        // a short settle onto the nearest stop; from deep in the long last section (more than a
-        // trip's half away) it goes at a trip's pace instead, so the ceremony plays rather than flashes by
-        if (target && Math.abs(target.y - lenis.scroll) > 3) goTo(nearest(lenis.scroll), Math.abs(target.y - lenis.scroll) > 1.8 * window.innerHeight ? undefined : 0.8);
+        let k = nearest(lenis.scroll);
+        // once the medal ceremony has begun, settle on through it to the references rather than
+        // back to the finish line
+        const st = scene.get();
+        if (st.mode === "trip" && st.trip === SLIDE_COUNT && refsHold() && st.q >= CEREMONY[0]) k = stops.current.length - 1;
+        const d = stops.current[k] ? Math.abs(stops.current[k].y - lenis.scroll) : 0;
+        // a short settle onto the stop; from deep in the long last section it goes at a trip's pace
+        // (so the ceremony plays rather than flashes by) and gives way to the next wheel or touch input
+        const far = d > 1.8 * window.innerHeight;
+        if (d > 3) goTo(k, far ? undefined : 0.8, !far);
       }, 260);
     });
     const tick = (t: number) => lenis.raf(t * 1000);

@@ -76,7 +76,18 @@ function Warmup({ textures }: { textures: THREE.Texture[] }) {
     const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
     const prev = gl.getRenderTarget();
     gl.setRenderTarget(target);
-    gl.compile(scene, camera);
+    // lights switched on and off with the scroll (userData.toggled) get every program built both
+    // ways, so switching one never compiles mid-scroll; the shadow pass's depth programs (which
+    // count the lights too, and which compile() does not build) by one render into the target each way
+    const toggled: THREE.Object3D[] = [];
+    scene.traverse((o) => void ((o as THREE.Light).isLight && o.userData.toggled && toggled.push(o)));
+    const was = toggled.map((o) => o.visible);
+    for (const on of toggled.length ? [true, false] : [true]) {
+      for (const o of toggled) o.visible = on;
+      gl.compile(scene, camera);
+      if (toggled.length) gl.render(scene, camera);
+    }
+    toggled.forEach((o, k) => (o.visible = was[k]));
     gl.setRenderTarget(prev);
     target.dispose();
   }, [gl, scene, camera, textures]);

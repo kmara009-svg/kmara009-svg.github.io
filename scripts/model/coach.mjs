@@ -13,7 +13,7 @@
 //    quantize all but the positions, which the app's shader reads as they are (metres, bind pose).
 // Every length below is in metres unless it says cm (the face is painted in cm, like hers).
 import { NodeIO } from "@gltf-transform/core";
-import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
+import { ALL_EXTENSIONS, KHRMeshQuantization } from "@gltf-transform/extensions";
 import { prune, quantize, simplifyPrimitive, weldPrimitive } from "@gltf-transform/functions";
 import { MeshoptSimplifier } from "meshoptimizer";
 import sharp from "sharp";
@@ -196,6 +196,15 @@ const body = (() => {
       for (let i = 0; i < n; i++) if (W[i] !== i) for (let k = 0; k < 3; k++) pos[3 * i + k] = pos[3 * W[i] + k];
     }
   }
+  // her legs are islands of their own, tucked under the shorts' hem (the torso island's lower edge)
+  const legs = new Uint8Array(n);
+  {
+    const W = weldIds(P), U = uf(n), size = new Map();
+    for (let t = 0; t < I.length; t += 3) { U.union(W[I[t]], W[I[t + 1]]); U.union(W[I[t]], W[I[t + 2]]); }
+    for (let i = 0; i < n; i++) { const r = U.find(W[i]); size.set(r, (size.get(r) ?? 0) + 1); }
+    const torso = [...size.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    for (let i = 0; i < n; i++) legs[i] = U.find(W[i]) !== torso && P[3 * i + 1] > 0.2 ? 1 : 0;
+  }
   // sleeves, shirt and trousers stand off the skin, along the reshaped surface's normals
   const N0 = vertexNormals(pos, I);
   for (let i = 0; i < n; i++) {
@@ -203,9 +212,14 @@ const body = (() => {
     const arm = armness(x, y);
     const sleeve = 0.008 * (1 - smooth(0.528, 0.545, ax));
     const shirt = 0.006 * (1 - smooth(1.29, 1.33, y));
-    const trousers = mix(0.017, 0.012, smooth(0.45, 0.8, y)) * smooth(0.12, 0.17, y);
+    // (none where the legs meet, where offsets along converging normals would fold the surface)
+    const crotch = smooth(0.74, 0.8, y) * (1 - smooth(0.9, 0.95, y)) * (1 - smooth(0.012, 0.05, ax));
+    const trousers = mix(0.017, 0.012, smooth(0.45, 0.8, y)) * smooth(0.12, 0.17, y) * (1 - crotch);
     const belt = smooth(0.955, 0.965, y) * (1 - smooth(0.995, 1.005, y)) * 0.004;
-    const torsoOff = y > 0.98 ? mix(trousers, shirt, smooth(0.98, 1.0, y)) : trousers;
+    // the shorts' hem stood 3-5 mm proud of the thigh: the trouser leg widens up into it and the hem's
+    // edge comes in a little, so the two meet without a step
+    const hem = legs[i] ? 0.006 * smooth(0.66, 0.745, y) : -0.003 * (1 - smooth(0.755, 0.775, y)) * smooth(0.7, 0.74, y);
+    const torsoOff = y > 0.98 ? mix(trousers, shirt, smooth(0.98, 1.0, y)) : trousers + hem;
     const off = ax > 0.545 ? 0 : mix(torsoOff + belt, sleeve, arm);
     for (let k = 0; k < 3; k++) pos[3 * i + k] += N0[3 * i + k] * off;
   }
@@ -252,7 +266,9 @@ const collar = (() => {
     const yF = yn + mix(0.013, 0.003, f);
     const thO = th + Math.sign(th) * 0.38 * f; // the points swing out across the chest
     const yO = yn - 0.018 - 0.045 * f;
-    const rF = surface(th, yF) + 0.005 + 0.004 * f;
+    // the fold's radius from the neck at the neckline: above it, at the sides, the ray would meet
+    // the underside of the jaw
+    const rF = surface(th, Math.min(yF, yn)) + 0.005 + 0.004 * f;
     const rO = surface(thO, yO) + 0.009;
     const F = at(th, yF, rF), O = at(thO, yO, rO);
     // a slight roll: the middle of the fall stands out from the straight line between fold and edge
@@ -301,7 +317,9 @@ const faceJpeg = await (async () => {
   const bodyImg = await sharp(Buffer.from(bodyPrim.getMaterial().getBaseColorTexture().getImage())).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   const DW = bodyImg.info.width, D = bodyImg.data;
   const samp = (u, v) => { const x = clamp(Math.floor(u * DW), 0, DW - 1), y = clamp(Math.floor(v * DW), 0, DW - 1), o = 3 * (y * DW + x); return [D[o], D[o + 1], D[o + 2]]; };
-  const lin = (c) => (c / 255) ** 2.2, srgb = (l) => 255 * Math.pow(clamp(l, 0, 1), 1 / 2.2);
+  // the sRGB transfer exactly, as three decodes the textures and colours the shader works with
+  const lin = (c) => { const v = c / 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const srgb = (l) => { const v = clamp(l, 0, 1); return 255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055); };
   const luma = (c) => 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
   const herLuma = luma(SKIN), coachLin = COACH_SKIN.map(lin);
   // the neck along the seam, in his tone as the app's shader recolours it (by luminance against her skin tone)
@@ -366,4 +384,6 @@ for (const [p, ratio] of RATIO) {
 }
 for (const tex of root.listTextures()) if (tex.getName() !== "CoachFace_Diffuse") tex.dispose();
 await doc.transform(prune({ keepAttributes: true }), quantize({ pattern: /^(NORMAL|TEXCOORD_0|JOINTS_0|WEIGHTS_0)$/, quantizeNormal: 8 }));
+// quantize() declares the extension only when positions are quantized too; the normals need it regardless
+doc.createExtension(KHRMeshQuantization).setRequired(true);
 await io.write(dst, doc);
