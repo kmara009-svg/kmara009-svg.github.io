@@ -241,13 +241,16 @@ const HERITAGE = (() => {
   const c = { x: -42.2, z: 0 }; // west bend centre
   const f = new THREE.Vector2(0.72, -0.69).normalize(); // facing the infield
   const R = 70;
-  return { x: c.x - f.x * R, z: c.z - f.y * R, yaw: Math.atan2(-f.x, -f.y) };
+  // its size, and its ten rows of benches: each row rise above the last, row r centred at z0 + (r + 0.5) * depth
+  const size = { L: 42, D: 13, base: 2.4, eave: 11.4 };
+  const benches = { rows: 10, rise: 0.5, depth: 0.95, z0: 0.9, len: size.L - 1.2 };
+  return { x: c.x - f.x * R, z: c.z - f.y * R, yaw: Math.atan2(-f.x, -f.y), ...size, benches };
 })();
 function heritage(b: Builder) {
-  const L = 42, D = 13, base = 2.4, eave = 11.4;
+  const { L, D, base, eave, benches: bn } = HERITAGE;
   const parts = new Builder();
   parts.add(box(L, base, D, 0, base / 2, D / 2), C.brick);
-  for (let r = 0; r < 10; r++) parts.add(box(L - 1.2, (r + 1) * 0.5, 0.9, 0, base + ((r + 1) * 0.5) / 2, 0.9 + (r + 0.5) * 0.95), C.timber);
+  for (let r = 0; r < bn.rows; r++) parts.add(box(bn.len, (r + 1) * bn.rise, 0.9, 0, base + ((r + 1) * bn.rise) / 2, bn.z0 + (r + 0.5) * bn.depth), C.timber);
   parts.add(box(L, eave, 0.6, 0, eave / 2, D - 0.3), C.brick);
   for (const s of [-1, 1]) parts.add(box(0.6, eave - 1.5, D, s * (L / 2 - 0.3), (eave - 1.5) / 2, D / 2), C.brick);
   for (let k = -4; k <= 4; k++) parts.add(box(2.2, 1.7, 0.1, k * 4.5, 0.85, -0.06), "#2a201b"); // doorways under the seats
@@ -352,18 +355,24 @@ function useCrowd() {
     const seats: { x: number; y: number; z: number; shirt: THREE.Color; skin: THREE.Color }[] = [];
     let rnd = 12345;
     const r = () => (rnd = (rnd * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    const sit = (x: number, y: number, z: number) =>
+      seats.push({ x, y, z, shirt: new THREE.Color(SHIRTS[Math.floor(r() * SHIRTS.length)]), skin: new THREE.Color(SKINS[Math.floor(r() * SKINS.length)]) });
     for (const s of STANDS) {
       for (let row = 0; row < s.rows; row++) {
         for (let x = s.x0 + 0.3; x < s.x1; x += 0.56) {
           if (r() < 0.14) continue; // empty seat
-          seats.push({
-            x: x + (r() - 0.5) * 0.08,
-            y: (row + 1) * s.rise + 0.62,
-            z: s.z0 + s.dir * ((row + 0.5) * s.rowDepth + 0.15),
-            shirt: new THREE.Color(SHIRTS[Math.floor(r() * SHIRTS.length)]),
-            skin: new THREE.Color(SKINS[Math.floor(r() * SKINS.length)]),
-          });
+          sit(x + (r() - 0.5) * 0.08, (row + 1) * s.rise + 0.62, s.z0 + s.dir * ((row + 0.5) * s.rowDepth + 0.15));
         }
+      }
+    }
+    // the heritage grandstand's benches, laid out in its own frame (facing -z, front centre at the
+    // origin) and turned onto the west bend with it
+    const H = HERITAGE, bn = H.benches, cos = Math.cos(H.yaw), sin = Math.sin(H.yaw);
+    for (let row = 0; row < bn.rows; row++) {
+      for (let lx = -bn.len / 2 + 0.3; lx < bn.len / 2 - 0.2; lx += 0.56) {
+        if (r() < 0.12) continue;
+        const x = lx + (r() - 0.5) * 0.08, z = bn.z0 + (row + 0.5) * bn.depth + 0.15;
+        sit(H.x + x * cos + z * sin, H.base + (row + 1) * bn.rise + 0.62, H.z - x * sin + z * cos);
       }
     }
     return seats;
