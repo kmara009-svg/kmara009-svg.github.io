@@ -6,6 +6,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import dynamic from "next/dynamic";
 import ScrollStory from "./ScrollStory";
 import ProgressTrack from "./ProgressTrack";
+import SpeechOverlay from "./SpeechOverlay";
 import { BEATS } from "@/lib/story";
 import { CEREMONY, SLIDE_COUNT, refsHold, scene } from "@/lib/scene";
 import { setTransit } from "@/lib/slideLayer";
@@ -50,6 +51,7 @@ export default function Experience() {
   const animating = useRef(false);
   const [presenting, setPresenting] = useState(false);
   const [current, setCurrent] = useState(0);
+  const [settled, setSettled] = useState(-1); // the stop the page is resting on, or -1 while it moves
   const [progress, setProgress] = useState(0);
 
   /* ---------- 1920x1080 stage scaling ---------- */
@@ -95,6 +97,15 @@ export default function Experience() {
     return best;
   }, []);
 
+  /* at rest on a stop (not mid-move, and within a few pixels of it) */
+  const rest = useCallback(() => {
+    const lenis = lenisRef.current;
+    const k = lenis && !animating.current ? nearest(lenis.scroll) : -1;
+    const s = k >= 0 ? stops.current[k] : undefined;
+    const at = lenis && s && Math.abs(s.y - lenis.scroll) < 3 ? k : -1;
+    setSettled((s) => (s === at ? s : at));
+  }, [nearest]);
+
   const goToRef = useRef<(i: number, d?: number) => void>(() => {});
   /* scroll speed (px/s), sampled from Lenis, so a move that starts while another is under way can
      pick up at the speed the page is already moving instead of restarting from a standstill */
@@ -137,6 +148,7 @@ export default function Experience() {
         : (t: number) => 1 - Math.pow(1 - t, 3);
       animating.current = true;
       soft.current = !lock;
+      setSettled(-1);
       lenis.scrollTo(to, {
         duration,
         easing,
@@ -146,10 +158,11 @@ export default function Experience() {
           animating.current = false;
           soft.current = false;
           setTransit(null);
+          rest();
         },
       });
     },
-    [nearest]
+    [nearest, rest]
   );
   goToRef.current = goTo;
 
@@ -207,6 +220,7 @@ export default function Experience() {
       }
       const idx = nearest(e.scroll);
       setCurrent((c) => (c === idx ? c : idx));
+      rest();
       window.clearTimeout(snapTimer);
       snapTimer = window.setTimeout(settle, 260);
     });
@@ -221,6 +235,7 @@ export default function Experience() {
       ScrollTrigger.refresh();
       if (at >= 0 && stops.current[at] && Math.abs(stops.current[at].y - lenis.scroll) > 2) lenis.scrollTo(stops.current[at].y, { immediate: true, force: true });
       scene.resolve(lenis.scroll);
+      rest();
     };
     refresh();
     const t1 = window.setTimeout(refresh, 300);
@@ -237,7 +252,7 @@ export default function Experience() {
       lenis.destroy();
       lenisRef.current = null;
     };
-  }, [computeStops, goTo, nearest]);
+  }, [computeStops, goTo, nearest, rest]);
 
   /* ---------- keyboard ---------- */
   useEffect(() => {
@@ -332,7 +347,7 @@ export default function Experience() {
     <main className="relative">
       {world}
 
-      {/* chrome: hidden in presentation mode. Nothing is ever placed top-right. */}
+      {/* chrome: hidden in presentation mode. The top-right corner is kept for the speech video. */}
       <div className="chrome fixed left-6 top-5 z-40 flex items-center gap-4 text-paper mix-blend-difference" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.08em" }}>
         <span className="uppercase">Refuel · Rebuild · Return</span>
         <span className="opacity-60">/</span>
@@ -349,6 +364,7 @@ export default function Experience() {
         </button>
       </div>
 
+      <SpeechOverlay stop={settled >= 0 ? stops.current[settled]?.id ?? null : null} ahead={stops.current[current + 1]?.id ?? null} />
       <ProgressTrack progress={progress} current={current} total={stops.current.length} />
     </main>
   );
