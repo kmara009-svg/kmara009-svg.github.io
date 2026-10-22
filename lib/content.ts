@@ -1,5 +1,6 @@
 /* Single source of content: the "RED-S Rehabilitation Strategy" PowerPoint.
-   Every figure, table, number and reference below is copied verbatim, in deck order. */
+   Every figure, table, number and reference below is copied verbatim, in deck order, except the
+   week-6 session time and the aerobic frequency, corrected to add up with the rest of the plan. */
 
 export const hero = {
   eyebrow: "RED-S rehab proposal",
@@ -243,7 +244,7 @@ export const session = {
     ["5 · Single-leg RDL", "3×8", "70% 1RM", "3-1-1", "90 s"],
     ["6 · Calf raise", "3×12", "Heavy", "3-1-1", "60 s"],
   ],
-  footer: "RAMP warm-up · ≈ 45 min · 24 sets · Regress: bone pain → no jumps",
+  footer: "RAMP warm-up · ≈ 70 min total · 24 sets · Regress: bone pain → no jumps",
   cite: "Watson et al. (2018); Beck et al. (2017)",
 };
 
@@ -265,7 +266,7 @@ export const aerobic = {
   },
   table: [
     ["Mode", "Bike or deep-water run"],
-    ["Frequency", "3×/wk + 2 easy runs"],
+    ["Frequency", "2×/wk + 2 easy bike"],
     ["Intensity", "RPE 7 · HR zone 4"],
     ["Work:rest", "2:1 · 47 min total"],
     ["Monitor", "Chest-strap HR, sRPE"],
