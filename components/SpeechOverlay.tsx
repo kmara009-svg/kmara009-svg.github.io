@@ -15,7 +15,6 @@ import { speechFiles, speechFor } from "@/lib/speeches";
    so a recording can be started first; R also restarts the current stop's speech from the top. */
 const FILES = speechFiles();
 const RETRY_MS = [0, 2000, 6000];
-const STALE_MS = 20 * 60 * 1000; // the release's download links last 30 minutes, and the browser keeps using one once it has it
 
 export default function SpeechOverlay({ stop, near, presenting }: { stop: string | null; near: (string | null)[]; presenting: boolean }) {
   const els = useRef<Record<string, HTMLVideoElement | null>>({});
@@ -31,7 +30,6 @@ export default function SpeechOverlay({ stop, near, presenting }: { stop: string
   const [failed, setFailed] = useState<Record<string, boolean>>({}); // could not be loaded: never shown as an empty box
   const failedRef = useRef<Record<string, boolean>>({});
   const [epoch, setEpoch] = useState<Record<string, number>>({}); // bumped to fetch a file afresh
-  const started = useRef<Record<string, number>>({}); // when each element last started loading
   const tries = useRef<Record<string, number>>({});
   const pending = useRef<Record<string, boolean>>({});
   const resumeAt = useRef<Record<string, number>>({});
@@ -66,7 +64,7 @@ export default function SpeechOverlay({ stop, near, presenting }: { stop: string
       .catch((e: DOMException) => setHeld(e.name === "NotAllowedError"));
   }, []);
 
-  /* fetch a file afresh (a new link from the release), then pick up where it was */
+  /* fetch a file afresh (past any cached failure), then pick up where it was */
   const reload = useCallback(
     (src: string) => {
       const v = els.current[src];
@@ -82,7 +80,7 @@ export default function SpeechOverlay({ stop, near, presenting }: { stop: string
     },
     [play]
   );
-  // a load that failed (an expired link, a network drop): try again after a pause, a few times at most
+  // a load that failed (a network drop): try again after a pause, a few times at most
   const recover = useCallback(
     (src: string) => {
       if (pending.current[src]) return;
@@ -100,8 +98,6 @@ export default function SpeechOverlay({ stop, near, presenting }: { stop: string
     },
     [reload, setFail]
   );
-  const stale = (src: string) => Date.now() - (started.current[src] ?? Date.now()) > STALE_MS;
-
   useEffect(() => {
     const src = speechFor(stop);
     for (const [f, v] of Object.entries(els.current)) if (f !== src) v?.pause();
@@ -123,8 +119,8 @@ export default function SpeechOverlay({ stop, near, presenting }: { stop: string
         setHeld(true);
         return;
       }
-      if (failedRef.current[src] || v.error || stale(src)) {
-        // it could not be loaded before, or its link has run out: fetch it afresh now its stop is up
+      if (failedRef.current[src] || v.error) {
+        // it could not be loaded before: fetch it afresh now its stop is up
         setFail(src, false);
         tries.current[src] = 0;
         reload(src);
@@ -134,16 +130,6 @@ export default function SpeechOverlay({ stop, near, presenting }: { stop: string
     }, 150);
     return () => window.clearTimeout(t);
   }, [stop, play, show, reload, setFail]);
-
-  // files about to be needed whose links have run out are fetched afresh while still out of sight
-  const nearKey = near.join("|");
-  useEffect(() => {
-    for (const id of nearKey.split("|")) {
-      const f = speechFor(id || null);
-      const v = f ? els.current[f] : null;
-      if (f && v && v.paused && f !== shownRef.current && stale(f)) reload(f);
-    }
-  }, [nearKey, reload]);
 
   // R starts the current stop's speech (or restarts it from the top)
   useEffect(() => {
@@ -182,9 +168,6 @@ export default function SpeechOverlay({ stop, near, presenting }: { stop: string
               src={epoch[f] ? `${f}?r=${epoch[f]}` : f}
               playsInline
               preload={warm.has(f) ? "auto" : "none"}
-              onLoadStart={() => {
-                started.current[f] = Date.now();
-              }}
               onPlaying={() => {
                 tries.current[f] = 0;
                 delete resumeAt.current[f];
