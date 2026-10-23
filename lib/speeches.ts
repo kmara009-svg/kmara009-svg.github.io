@@ -4,13 +4,12 @@
    each slide's is its section id. A stop with no entry shows no video. When the next stop has the
    same file, the video carries on from where it paused during the move instead of starting again.
 
-   The files are the presenter's own recordings, played straight from the repository's "speeches"
-   release (together they are over GitHub Pages' 1 GB site limit), unedited except Speech 1: it was
-   recorded about 15 dB quieter than the rest, so the site serves its own copy from
-   public/speeches with only the sound raised to match (+15.5 dB through a limiter, -13.4 LUFS; the
-   video stream is the original's, copied). */
-const RELEASE = "https://github.com/kmara009-svg/kmara009-svg.github.io/releases/download/speeches/";
-const speech = (n: number) => (n === 1 ? "/speeches/Speech.1.mp4" : `${RELEASE}Speech.${n}.mp4`);
+   The files in public/speeches are the presenter's recordings, made lighter for the web at their
+   request: the picture is 720p H.264 (the box shows it about 550 px wide, so it looks the same as
+   the 1080p originals at a quarter of the data), the sound is the original's, copied, except
+   Speech 1, recorded about 15 dB quieter than the rest, whose sound is raised to match (+15.5 dB
+   through a limiter). The untouched originals are in the repository's "speeches" release. */
+const speech = (n: number) => `/speeches/Speech.${n}.mp4`;
 
 /* slides 1 to 20 in order (the references, slide 21, have no speech) */
 const SLIDES = ["glance", "energy", "skeleton", "hormones", "normal-vs-reds", "signs", "day-one", "injury-report", "start-now", "risk", "prevention", "needs", "monitoring", "decisions", "phases", "session", "aerobic", "return", "evidence", "closing"];
