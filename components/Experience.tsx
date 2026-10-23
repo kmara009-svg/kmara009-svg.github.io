@@ -338,6 +338,8 @@ export default function Experience() {
   }, []);
 
   const label = stops.current[current]?.label ?? "";
+  // the stop the page is at or heading for: the speeches around it are the ones to have loaded
+  const focus = animating.current ? dest.current : current;
 
   /* the scene and every slide are built once; scroll-driven state never re-renders them */
   const world = useMemo(
@@ -379,7 +381,7 @@ export default function Experience() {
         </button>
       </div>
 
-      <SpeechOverlay stop={settled >= 0 ? stops.current[settled]?.id ?? null : null} near={[current - 1, current, current + 1].map((k) => stops.current[k]?.id ?? null)} />
+      <SpeechOverlay stop={settled >= 0 ? stops.current[settled]?.id ?? null : null} near={[-1, 0, 1, 2].map((o) => stops.current[focus + o]?.id ?? null)} presenting={presenting} />
       <ProgressTrack progress={progress} current={current} total={stops.current.length} />
     </main>
   );
