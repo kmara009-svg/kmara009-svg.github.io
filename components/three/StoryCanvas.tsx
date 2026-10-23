@@ -15,7 +15,7 @@ import Billboards from "./Billboards";
 import { Dust } from "./Effects";
 import MicroBone, { MICRO_ORIGIN } from "./MicroBone";
 import { story, storyState, srange, range } from "@/lib/story";
-import { CEREMONY, FINISH_INDEX, SLIDE_COUNT, TRIP_CAM, dropRefsHold, runnerPose, scene, tripQ } from "@/lib/scene";
+import { CEREMONY, FINISH_INDEX, SLIDE_COUNT, TRIP_CAM, cover, dropRefsHold, runnerPose, scene, tripQ } from "@/lib/scene";
 import { CEREMONY_VIEW, LEAVE } from "@/lib/ceremony";
 import { pointAt, relative } from "@/lib/trackPath";
 import { SIGN_FACE, signCorners, signPose } from "@/lib/signs";
@@ -238,6 +238,34 @@ function CameraRig() {
    this very frame (after CameraRig has moved it) and hands the quads to the slide layer. */
 const SIGN_CORNERS = new Map<number, THREE.Vector3[]>();
 for (let i = 1; i <= SLIDE_COUNT; i++) if (i !== FINISH_INDEX) SIGN_CORNERS.set(i, signCorners(i).map(([x, y, z]) => new THREE.Vector3(x, y, z)));
+/* while a slide's opaque stage covers the scene at rest there is nothing to draw: stop the render loop
+   (the last frame stays up behind any letterbox bars) and start it again the moment the page moves.
+   A resize clears the canvas, so it draws a few frames again first. */
+function HoldWhenCovered() {
+  const setFrameloop = useThree((s) => s.setFrameloop);
+  useEffect(() => {
+    let t: number | undefined;
+    const off = cover.subscribe((c) => {
+      window.clearTimeout(t);
+      setFrameloop(c ? "never" : "always");
+    });
+    const onResize = () => {
+      if (!cover.get()) return;
+      setFrameloop("always");
+      window.clearTimeout(t);
+      t = window.setTimeout(() => cover.get() && setFrameloop("never"), 400);
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      off();
+      window.clearTimeout(t);
+      window.removeEventListener("resize", onResize);
+      setFrameloop("always");
+    };
+  }, [setFrameloop]);
+  return null;
+}
+
 function SlideGlue() {
   const { camera, size } = useThree();
   const v = useMemo(() => new THREE.Vector3(), []);
@@ -332,7 +360,10 @@ export default function StoryCanvas() {
               // window.__norender skips the GPU work, so motion can be traced at full frame rate on software GL
               const w = window as unknown as Record<string, unknown>;
               const render = gl.render.bind(gl), clear = gl.clear.bind(gl);
-              gl.render = (sc, cam) => void (!w.__norender && render(sc, cam));
+              gl.render = (sc, cam) => {
+                w.__renders = ((w.__renders as number) || 0) + 1;
+                if (!w.__norender) render(sc, cam);
+              };
               gl.clear = (c, d, st) => void (!w.__norender && clear(c, d, st));
             }
           }}
@@ -340,6 +371,7 @@ export default function StoryCanvas() {
           <fog attach="fog" args={[HAZE_HEX, 220, 2100]} />
           <CameraRig />
           <SlideGlue />
+          <HoldWhenCovered />
           <Suspense fallback={null}>
             <Environment resolution={128} frames={1}>
               {/* dusk: a lavender sky, the afterglow low in the west, a floodlight bank, dark ground */}

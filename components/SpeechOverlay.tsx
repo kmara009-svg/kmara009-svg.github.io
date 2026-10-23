@@ -6,8 +6,10 @@ import { speechFiles, speechFor } from "@/lib/speeches";
    comes up and plays once a move has come to rest on a stop that has one, and stops and fades the
    moment the page moves on, or when it finishes. Each file has its own element: a speech that runs
    on into the next stop resumes where it paused (or stays down if it has already finished), and the
-   files around the stop the page is heading for are already loading, so a speech shows from its
-   first frame rather than as an empty box.
+   file of the stop the page is heading for is already loading, so a speech shows from its first
+   frame rather than as an empty box. Only one other file ever loads beside the one playing (the
+   next speech), and only once the playing one has a good stretch buffered, so a busy laptop or
+   connection always gives the speech you hear the bandwidth it needs.
 
    The speech of the stop the page opens on waits for R (or a click on it outside presentation mode),
    so a recording can be started first; R also restarts the current stop's speech from the top. */
@@ -34,10 +36,21 @@ export default function SpeechOverlay({ stop, near, presenting }: { stop: string
   const pending = useRef<Record<string, boolean>>({});
   const resumeAt = useRef<Record<string, number>>({});
   const onMeta = useRef<Record<string, () => void>>({});
+  const [roomy, setRoomy] = useState(true); // the speech on screen has enough buffered for others to load beside it
 
   const show = useCallback((src: string | null) => {
     shownRef.current = src;
     setShown(src);
+    setRoomy(src === null);
+  }, []);
+  // a dozen seconds buffered ahead (or to its end) is enough not to stall on a busy connection
+  const checkRoom = useCallback((f: string) => {
+    const v = els.current[f];
+    if (!v || shownRef.current !== f) return;
+    const end = v.buffered.length ? v.buffered.end(v.buffered.length - 1) : 0;
+    const left = (Number.isFinite(v.duration) ? v.duration : Infinity) - v.currentTime;
+    const ok = v.ended || end - v.currentTime >= Math.min(12, left - 0.25);
+    setRoomy((r) => (r === ok ? r : ok));
   }, []);
   const setFail = useCallback((src: string, on: boolean) => {
     failedRef.current = { ...failedRef.current, [src]: on };
@@ -151,7 +164,10 @@ export default function SpeechOverlay({ stop, near, presenting }: { stop: string
   }, [play, show]);
 
   if (!FILES.length) return null;
-  const warm = new Set([shown, ...near.map(speechFor)]);
+  // near: the stops before, at, and the two after the one the page is at or heading for
+  const files = near.map(speechFor);
+  const next = files.slice(2).find((f) => f && f !== shown) ?? null; // the next different speech
+  const warm = new Set(shown ? [shown, roomy ? next : null] : [files[1]]);
   // inside the slides' 600 x 400 webcam zone (top right of the 1920 x 1080 stage), scaled with the stage
   return (
     <div className="pointer-events-none fixed inset-0 z-50">
@@ -175,7 +191,12 @@ export default function SpeechOverlay({ stop, near, presenting }: { stop: string
                 setLive(f);
                 setOver((o) => (o === f ? null : o));
               }}
-              onEnded={() => setOver(f)}
+              onEnded={() => {
+                setOver(f);
+                checkRoom(f);
+              }}
+              onProgress={() => checkRoom(f)}
+              onTimeUpdate={() => checkRoom(f)}
               onEmptied={() => setLive((l) => (l === f ? null : l))}
               onError={() => recover(f)}
               className="absolute inset-0 h-full w-full object-cover"

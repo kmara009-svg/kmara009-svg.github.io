@@ -39,7 +39,7 @@ export function Slide({ id, label, index, tone = "paper", stageStyle, children }
     };
   }, [index]);
   return (
-    <section id={id} ref={section} data-label={label} data-index={index} className="slide trip" style={{ height: index === SLIDE_COUNT ? `calc(${TRIP_VH * 100}vh * var(--refs-length, ${REFS_LENGTH}))` : `${TRIP_VH * 100}vh` }}>
+    <section id={id} ref={section} data-label={label} data-index={index} data-cover={stageStyle?.background === "transparent" ? "0" : "1"} className="slide trip" style={{ height: index === SLIDE_COUNT ? `calc(${TRIP_VH * 100}vh * var(--refs-length, ${REFS_LENGTH}))` : `${TRIP_VH * 100}vh` }}>
       <div className="pointer-events-none fixed inset-0">
         <div ref={wrap} className="absolute inset-0" style={{ opacity: 0, visibility: "hidden", transform: "translateY(150vh)" }}>
           <Stage tone={tone} style={stageStyle}>

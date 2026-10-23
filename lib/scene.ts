@@ -97,5 +97,22 @@ export const scene = {
   },
 };
 
+/* the page is resting on a slide whose opaque stage hides the 3D scene: the scene can stop drawing
+   (and leave the laptop's GPU and CPU to the speech video) until the next move */
+let covered = false;
+const coverSubs = new Set<(v: boolean) => void>();
+export const cover = {
+  get: () => covered,
+  set(v: boolean) {
+    if (v === covered) return;
+    covered = v;
+    coverSubs.forEach((f) => f(v));
+  },
+  subscribe(f: (v: boolean) => void) {
+    coverSubs.add(f);
+    return () => void coverSubs.delete(f);
+  },
+};
+
 /* live runner transform, written by the Runner every frame for effects that follow her */
 export const runnerPose = { x: 0, z: 0, heading: 0, d: 0, speed: 0 };

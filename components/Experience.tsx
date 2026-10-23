@@ -8,7 +8,7 @@ import ScrollStory from "./ScrollStory";
 import ProgressTrack from "./ProgressTrack";
 import SpeechOverlay from "./SpeechOverlay";
 import { BEATS } from "@/lib/story";
-import { CEREMONY, SLIDE_COUNT, refsHold, scene } from "@/lib/scene";
+import { CEREMONY, SLIDE_COUNT, cover, refsHold, scene } from "@/lib/scene";
 import { setTransit } from "@/lib/slideLayer";
 import { IntroSections } from "./sections/Intro";
 import { CareSections } from "./sections/Care";
@@ -19,7 +19,7 @@ gsap.registerPlugin(ScrollTrigger);
 
 const StoryCanvas = dynamic(() => import("./three/StoryCanvas"), { ssr: false });
 
-type Stop = { id: string; label: string; y: number };
+type Stop = { id: string; label: string; y: number; cover?: boolean };
 
 /* Lenis is still carrying the page: our own move or a smoothed wheel, or a native scroll with speed
    left (a native scroll event that moved nothing leaves it marked "native" until the next one) */
@@ -83,7 +83,7 @@ export default function Experience() {
     }
     document.querySelectorAll<HTMLElement>("section.slide").forEach((el, i) => {
       // a trip section's stop is its end, where the slide has fully risen over the scene
-      list.push({ id: el.id || `slide-${i}`, label: el.dataset.label || "", y: el.offsetTop + el.offsetHeight - vh });
+      list.push({ id: el.id || `slide-${i}`, label: el.dataset.label || "", y: el.offsetTop + el.offsetHeight - vh, cover: el.dataset.cover === "1" });
     });
     stops.current = list;
   }, []);
@@ -107,6 +107,7 @@ export default function Experience() {
     const k = lenis && !animating.current && !moving(lenis) ? nearest(lenis.scroll) : -1;
     const s = k >= 0 ? stops.current[k] : undefined;
     const at = lenis && s && Math.abs(s.y - lenis.scroll) <= 3 ? k : -1;
+    if (at < 0) cover.set(false); // the scene draws again from the first frame of any move
     setSettled((s) => (s === at ? s : at));
   }, [nearest]);
 
@@ -153,6 +154,7 @@ export default function Experience() {
       animating.current = true;
       soft.current = !lock;
       setSettled(-1);
+      cover.set(false);
       lenis.scrollTo(to, {
         duration,
         easing,
@@ -268,6 +270,13 @@ export default function Experience() {
       lenisRef.current = null;
     };
   }, [computeStops, goTo, nearest, rest]);
+
+  /* resting on a slide that hides the 3D scene: let the scene stop drawing once the slide has landed */
+  useEffect(() => {
+    if (settled < 0 || !stops.current[settled]?.cover) return cover.set(false);
+    const t = window.setTimeout(() => cover.set(true), 400);
+    return () => window.clearTimeout(t);
+  }, [settled]);
 
   /* ---------- keyboard ---------- */
   useEffect(() => {
