@@ -21,6 +21,10 @@ const StoryCanvas = dynamic(() => import("./three/StoryCanvas"), { ssr: false })
 
 type Stop = { id: string; label: string; y: number };
 
+/* Lenis is still carrying the page: our own move or a smoothed wheel, or a native scroll with speed
+   left (a native scroll event that moved nothing leaves it marked "native" until the next one) */
+const moving = (l: Lenis) => l.isScrolling === "smooth" || (l.isScrolling === "native" && l.velocity !== 0);
+
 /* the medal trip from a standstill: a brisk run in, slower through the ceremony (lib/scene
    CEREMONY, 0.42 to 0.84 of the way), then the zoom; and back, out of the zoom, through the
    ceremony, the run back. Both set off at once and come to rest. Monotone cubics through
@@ -97,12 +101,12 @@ export default function Experience() {
     return best;
   }, []);
 
-  /* at rest on a stop (not mid-move, and within a few pixels of it) */
+  /* at rest on a stop: not mid-move (ours, or a scroll still easing out), and within a few pixels of it */
   const rest = useCallback(() => {
     const lenis = lenisRef.current;
-    const k = lenis && !animating.current ? nearest(lenis.scroll) : -1;
+    const k = lenis && !animating.current && !moving(lenis) ? nearest(lenis.scroll) : -1;
     const s = k >= 0 ? stops.current[k] : undefined;
-    const at = lenis && s && Math.abs(s.y - lenis.scroll) < 3 ? k : -1;
+    const at = lenis && s && Math.abs(s.y - lenis.scroll) <= 3 ? k : -1;
     setSettled((s) => (s === at ? s : at));
   }, [nearest]);
 
@@ -185,7 +189,16 @@ export default function Experience() {
       lenis.start();
     });
     const settle = () => {
-      if (animating.current || noSnap) return;
+      // a move Lenis dropped without finishing (a middle click resets it, with no onComplete) is over
+      if (animating.current && !moving(lenis)) {
+        animating.current = false;
+        soft.current = false;
+        setTransit(null);
+      }
+      if (animating.current || noSnap) {
+        rest();
+        return;
+      }
       // never under a resting finger: wait for it to lift
       if (lenis.isTouching) {
         snapTimer = window.setTimeout(settle, 260);
@@ -201,6 +214,7 @@ export default function Experience() {
       // (so the ceremony plays rather than flashes by) and gives way to the next wheel or touch input
       const far = d > 1.8 * window.innerHeight;
       if (d > 3) goTo(k, far ? undefined : 0.8, !far);
+      else rest();
     };
     lenis.on("scroll", (e: Lenis) => {
       ScrollTrigger.update();
@@ -233,6 +247,7 @@ export default function Experience() {
       const at = stops.current.length && !animating.current ? nearest(lenis.scroll) : -1;
       computeStops();
       ScrollTrigger.refresh();
+      lenis.resize(); // Lenis re-measures the page only 250 ms after a resize: without this a jump to a late stop is cut short at the old page end
       if (at >= 0 && stops.current[at] && Math.abs(stops.current[at].y - lenis.scroll) > 2) lenis.scrollTo(stops.current[at].y, { immediate: true, force: true });
       scene.resolve(lenis.scroll);
       rest();
@@ -364,7 +379,7 @@ export default function Experience() {
         </button>
       </div>
 
-      <SpeechOverlay stop={settled >= 0 ? stops.current[settled]?.id ?? null : null} ahead={stops.current[current + 1]?.id ?? null} />
+      <SpeechOverlay stop={settled >= 0 ? stops.current[settled]?.id ?? null : null} near={[current - 1, current, current + 1].map((k) => stops.current[k]?.id ?? null)} />
       <ProgressTrack progress={progress} current={current} total={stops.current.length} />
     </main>
   );
