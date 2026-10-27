@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { speechFiles, speechFor } from "@/lib/speeches";
+import { SPEECH_RATE, speechFiles, speechFor } from "@/lib/speeches";
 
 /* The presenter's recorded speech for the stop the page is resting on, in the top-right corner. It
    comes up and plays once a move has come to rest on a stop that has one, and stops and fades the
@@ -164,6 +164,11 @@ export default function SpeechOverlay({ stop, near, presenting }: { stop: string
               key={f}
               ref={(el) => {
                 els.current[f] = el;
+                if (el) {
+                  el.preservesPitch = true;
+                  el.defaultPlaybackRate = SPEECH_RATE; // (kept when a file is fetched afresh)
+                  el.playbackRate = SPEECH_RATE;
+                }
               }}
               src={epoch[f] ? `${f}?r=${epoch[f]}` : f}
               playsInline

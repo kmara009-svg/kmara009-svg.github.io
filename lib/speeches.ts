@@ -26,5 +26,9 @@ export const SPEECHES: Partial<Record<string, string>> = {
   ...Object.fromEntries(SLIDES.map((id, i) => [id, speech(i + 5)])),
 };
 
+/* the speeches play 10% faster, at the presenter's request, to fit the talk inside 15 minutes; the
+   browser keeps the voice at its own pitch */
+export const SPEECH_RATE = 1.1;
+
 export const speechFor = (stop: string | null) => (stop ? SPEECHES[stop] ?? null : null);
 export const speechFiles = () => [...new Set(Object.values(SPEECHES).filter((s): s is string => !!s))];
