@@ -133,10 +133,10 @@ export default function Experience() {
       dest.current = idx;
       const to = stops.current[idx].y;
       const dist = Math.abs(to - from) / window.innerHeight;
-      const trip = dist > 1.8; // a slide trip is 3.2 screens: ~6.5 s, moving from the first frame so a key press answers at once
+      const trip = dist > 1.8; // a slide trip is 3.2 screens: 3 s (brisk, to keep the talk inside 15 minutes), moving from the first frame so a key press answers at once
       // the last trip, twice as long for the medal, gets the time for it when taken on its own
       const medal = trip && onStop && refsHold() && Math.abs(idx - at) === 1 && Math.max(idx, at) === stops.current.length - 1;
-      if (duration >= 1.5) duration = trip ? (medal ? Math.min(12, 2.4 + 1.5 * dist) : Math.min(6.5, 2.4 + 1.4 * dist)) : Math.min(3, 1.1 + 0.85 * dist);
+      if (duration >= 1.5) duration = trip ? (medal ? Math.min(6, 1.2 + 0.75 * dist) : Math.min(3, 1.2 + 0.6 * dist)) : Math.min(3, 1.1 + 0.85 * dist);
       // already moving (a second press mid-trip): start the new ease at the current speed, so the
       // camera and the runner carry straight on rather than lurching
       const moving = animating.current && Math.abs(vel.current.v) > 30 && Math.sign(vel.current.v) === Math.sign(to - from);
