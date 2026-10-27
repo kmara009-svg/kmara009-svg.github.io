@@ -7,6 +7,7 @@ import dynamic from "next/dynamic";
 import ScrollStory from "./ScrollStory";
 import ProgressTrack from "./ProgressTrack";
 import SpeechOverlay from "./SpeechOverlay";
+import Recorder from "./Recorder";
 import { BEATS } from "@/lib/story";
 import { CEREMONY, SLIDE_COUNT, cover, refsHold, scene } from "@/lib/scene";
 import { setTransit } from "@/lib/slideLayer";
@@ -388,6 +389,7 @@ export default function Experience() {
         <button type="button" onClick={() => setPresenting(true)} className="uppercase underline-offset-4 hover:underline">
           <kbd className="mr-2 rounded border border-current px-2 py-0.5">P</kbd>presentation mode
         </button>
+        <Recorder />
       </div>
 
       <SpeechOverlay stop={settled >= 0 ? stops.current[settled]?.id ?? null : null} near={[-1, 0, 1, 2].map((o) => stops.current[focus + o]?.id ?? null)} presenting={presenting} />
